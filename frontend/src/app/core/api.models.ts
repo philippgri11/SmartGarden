@@ -1,0 +1,247 @@
+export interface Zone {
+  id: number;
+  name: string;
+  description?: string | null;
+  gpio_chip: string;
+  gpio_line: number;
+  active: boolean;
+  default_manual_duration_minutes: number;
+  max_duration_minutes: number;
+  weather_enabled: boolean;
+  weather_probability_threshold?: number | null;
+  weather_precipitation_mm_threshold?: number | null;
+  status: 'disabled' | 'active' | 'watering' | 'scheduled-soon' | 'paused' | 'error';
+  run_state: 'idle' | 'queued' | 'running' | 'stopping';
+  running: boolean;
+  current_run_id?: number | null;
+  current_run_status?: string | null;
+  current_run_started_at?: string | null;
+  current_run_requested_duration_minutes?: number | null;
+  current_run_remaining_seconds?: number | null;
+  current_run_stop_requested: boolean;
+  last_known_gpio_state: boolean;
+  last_gpio_changed_at?: string | null;
+  next_watering_at?: string | null;
+  last_watering_at?: string | null;
+  last_run_status?: string | null;
+  last_weather_decision?: string | null;
+  last_weather_reason?: string | null;
+  weather_decision_effective: boolean;
+  weather_decision?: 'allow' | 'skip' | 'error' | 'inactive' | 'unknown' | null;
+  weather_reason_human?: string | null;
+  weather_snapshot?: WeatherOverview | null;
+  manual_start_allowed: boolean;
+  manual_start_block_reason?: string | null;
+  active_shape_count: number;
+}
+
+export interface Schedule {
+  id: number;
+  zone_id: number;
+  active: boolean;
+  weekdays: string[];
+  start_time: string;
+  duration_minutes: number;
+  interval_hours?: number | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  weather_enabled: boolean;
+  weather_probability_threshold?: number | null;
+  weather_precipitation_mm_threshold?: number | null;
+}
+
+export interface WeatherDecision {
+  id: number;
+  decision: string;
+  reason: string;
+  reason_human?: string | null;
+  checked_at: string;
+  precipitation_probability_max?: number | null;
+  precipitation_sum_mm?: number | null;
+}
+
+export interface WeatherOverview {
+  weather_enabled: boolean;
+  decision: 'allow' | 'skip' | 'error' | 'inactive' | 'unknown';
+  headline: string;
+  summary_text: string;
+  current_condition_label?: string | null;
+  current_weather_code?: number | null;
+  current_is_day?: boolean | null;
+  current_temperature_c?: number | null;
+  forecast_window_hours: number;
+  precipitation_probability_max?: number | null;
+  precipitation_sum_mm?: number | null;
+  probability_threshold: number;
+  precipitation_threshold_mm: number;
+  fail_mode: 'allow' | 'deny';
+  source_status: 'fresh' | 'stale' | 'unavailable';
+  checked_at?: string | null;
+  reason_human: string;
+}
+
+export interface WateringRun {
+  id: number;
+  zone_id: number;
+  schedule_id?: number | null;
+  trigger_type: string;
+  status: string;
+  scheduled_for?: string | null;
+  requested_duration_minutes: number;
+  sequence_group_id?: string | null;
+  sequence_order?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_seconds?: number | null;
+  stop_requested: boolean;
+  reason?: string | null;
+  created_at: string;
+  weather_decisions: WeatherDecision[];
+}
+
+export interface AppSettings {
+  location_name: string;
+  postal_code?: string | null;
+  latitude: number;
+  longitude: number;
+  weather_enabled: boolean;
+  weather_window_hours: number;
+  weather_probability_threshold: number;
+  weather_precipitation_mm_threshold: number;
+  weather_fail_mode: 'allow' | 'deny';
+  winter_mode_active: boolean;
+  winter_disable_manual_start: boolean;
+  winter_pause_schedules: boolean;
+  safety_shutdown_on_winter: boolean;
+  system_paused_until?: string | null;
+  safety_stop_active: boolean;
+  safety_stop_reason?: string | null;
+}
+
+export interface GpioEvent {
+  id: number;
+  zone_id: number;
+  state: boolean;
+  source: string;
+  reason?: string | null;
+  created_at: string;
+}
+
+export interface GardenMap {
+  id: number;
+  name: string;
+  image_url?: string | null;
+  width: number;
+  height: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZoneMapShape {
+  id: number;
+  garden_map_id: number;
+  zone_id: number;
+  name: string;
+  geometry_json: GeoJSON.Feature<GeoJSON.Geometry>;
+  style_json?: Record<string, unknown> | null;
+  label_position_x?: number | null;
+  label_position_y?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZoneMapZoneStatus {
+  zone_id: number;
+  id: number;
+  name: string;
+  description?: string | null;
+  gpio_chip: string;
+  gpio_line: number;
+  active: boolean;
+  default_manual_duration_minutes: number;
+  weather_probability_threshold?: number | null;
+  weather_precipitation_mm_threshold?: number | null;
+  status: 'disabled' | 'active' | 'watering' | 'scheduled-soon' | 'paused' | 'error';
+  run_state: 'idle' | 'queued' | 'running' | 'stopping';
+  running: boolean;
+  current_run_id?: number | null;
+  current_run_status?: string | null;
+  current_run_started_at?: string | null;
+  current_run_requested_duration_minutes?: number | null;
+  current_run_remaining_seconds?: number | null;
+  current_run_stop_requested: boolean;
+  last_known_gpio_state: boolean;
+  last_gpio_changed_at?: string | null;
+  next_watering_at?: string | null;
+  last_watering_at?: string | null;
+  weather_enabled: boolean;
+  last_run_status?: string | null;
+  last_weather_decision?: string | null;
+  last_weather_reason?: string | null;
+  weather_decision_effective: boolean;
+  weather_decision?: 'allow' | 'skip' | 'error' | 'inactive' | 'unknown' | null;
+  weather_reason_human?: string | null;
+  weather_snapshot?: WeatherOverview | null;
+  manual_start_allowed: boolean;
+  manual_start_block_reason?: string | null;
+  active_shape_count: number;
+  max_duration_minutes: number;
+}
+
+export interface ZoneMapShapeView extends ZoneMapShape {
+  zone_status: ZoneMapZoneStatus;
+}
+
+export interface GardenMapView {
+  map: GardenMap;
+  shapes: ZoneMapShapeView[];
+}
+
+export interface SystemSummary {
+  status: 'ok' | 'running' | 'paused' | 'winter' | 'attention';
+  headline: string;
+  detail: string;
+  current_water_status: string;
+  next_watering_at?: string | null;
+  weather_status: string;
+  weather_overview: WeatherOverview;
+  active_schedule_count: number;
+  running_zone_count: number;
+  winter_mode_active: boolean;
+  safety_stop_active: boolean;
+  system_paused_until?: string | null;
+  last_run_zone_name?: string | null;
+  last_run_finished_at?: string | null;
+  last_run_status?: string | null;
+  manual_sequence_active: boolean;
+  manual_sequence_current_area_name?: string | null;
+  manual_sequence_total_areas: number;
+  manual_sequence_completed_areas: number;
+  manual_sequence_skipped_schedule_count: number;
+  manual_sequence_notice?: string | null;
+}
+
+export interface RuntimeSnapshot {
+  generated_at: string;
+  settings: AppSettings;
+  summary: SystemSummary;
+  areas: Zone[];
+}
+
+export interface RunAllAreasResponse {
+  message: string;
+  queued_run_count: number;
+  skipped_schedule_count: number;
+  sequence_group_id: string;
+}
+
+export interface PauseSystemPayload {
+  hours: number;
+}
+
+export interface WinterModePayload {
+  active: boolean;
+  disable_manual_start: boolean;
+  pause_schedules: boolean;
+  safety_shutdown: boolean;
+}

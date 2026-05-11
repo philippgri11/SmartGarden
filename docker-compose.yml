@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-irrigation}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-irrigation}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: ${DATABASE_HOST:-postgres}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:-irrigation}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      GPIO_MODE: ${GPIO_MODE:-simulated}
+      WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+      WEATHER_FAIL_MODE: ${WEATHER_FAIL_MODE:-allow}
+      DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-52.52}
+      DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:-13.405}
+      SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-2}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8080}
+    command: ["python", "-m", "app.entrypoint", "api"]
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  scheduler:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: ${DATABASE_HOST:-postgres}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:-irrigation}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      GPIO_MODE: ${GPIO_MODE:-simulated}
+      WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+      WEATHER_FAIL_MODE: ${WEATHER_FAIL_MODE:-allow}
+      DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-52.52}
+      DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:-13.405}
+      SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-2}
+    command: ["python", "-m", "app.entrypoint", "worker"]
+    restart: unless-stopped
+
+  seed-local:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: ${DATABASE_HOST:-postgres}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:-irrigation}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      GPIO_MODE: ${GPIO_MODE:-simulated}
+      WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+      WEATHER_FAIL_MODE: ${WEATHER_FAIL_MODE:-allow}
+      DEFAULT_LATITUDE: ${DEFAULT_LATITUDE:-52.52}
+      DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:-13.405}
+    command: ["python", "-m", "app.entrypoint", "seed-local"]
+    restart: "no"
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

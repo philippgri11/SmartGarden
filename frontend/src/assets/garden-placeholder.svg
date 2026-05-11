@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <rect width="1600" height="900" fill="#EEF4EA"/>
+  <rect x="60" y="60" width="1480" height="780" rx="32" fill="#F8FBF5" stroke="#C9D8CA" stroke-width="8"/>
+  <path d="M120 700C260 620 360 630 500 700C660 780 760 780 900 700C1060 610 1170 610 1320 700C1410 754 1470 760 1520 738V840H120V700Z" fill="#D7E8CF"/>
+  <path d="M120 230C210 180 320 170 430 210C520 244 610 252 700 230C800 206 910 208 1020 244C1120 276 1230 280 1360 230" stroke="#9AB88C" stroke-width="14" stroke-linecap="round"/>
+  <path d="M260 280V760" stroke="#C7B28F" stroke-width="14" stroke-linecap="round" stroke-dasharray="22 18"/>
+  <path d="M800 220V760" stroke="#C7B28F" stroke-width="14" stroke-linecap="round" stroke-dasharray="22 18"/>
+  <path d="M1320 280V760" stroke="#C7B28F" stroke-width="14" stroke-linecap="round" stroke-dasharray="22 18"/>
+  <rect x="180" y="300" width="260" height="180" rx="24" fill="#DCEFD3" stroke="#7FA66B" stroke-width="8"/>
+  <rect x="510" y="360" width="310" height="140" rx="24" fill="#E8F5DD" stroke="#7FA66B" stroke-width="8"/>
+  <rect x="940" y="300" width="420" height="220" rx="24" fill="#DCEFD3" stroke="#7FA66B" stroke-width="8"/>
+  <circle cx="610" cy="635" r="82" fill="#B5D4A4" stroke="#6F9461" stroke-width="10"/>
+  <circle cx="1040" cy="650" r="110" fill="#B5D4A4" stroke="#6F9461" stroke-width="10"/>
+  <path d="M1360 600C1410 555 1460 555 1510 600" stroke="#5D8BC8" stroke-width="14" stroke-linecap="round"/>
+  <path d="M1360 628C1410 583 1460 583 1510 628" stroke="#5D8BC8" stroke-width="14" stroke-linecap="round"/>
+  <text x="120" y="140" fill="#1B6B48" font-family="Avenir Next, Segoe UI, sans-serif" font-size="48" font-weight="700">Gartenkarten-Platzhalter</text>
+  <text x="120" y="190" fill="#607164" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28">Lokales Testbild für Leaflet Simple CRS</text>
+</svg>

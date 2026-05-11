@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: irrigation-config
+  namespace: irrigation
+data:
+  DATABASE_HOST: postgres.irrigation.svc.cluster.local
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: irrigation
+  DATABASE_USER: postgres
+  GPIO_MODE: simulated
+  WEATHER_ENABLED: "true"
+  WEATHER_FAIL_MODE: allow
+  DEFAULT_LATITUDE: "52.52"
+  DEFAULT_LONGITUDE: "13.405"
+  FRONTEND_ORIGIN: http://frontend.irrigation.local
+  SCHEDULER_POLL_SECONDS: "2"
