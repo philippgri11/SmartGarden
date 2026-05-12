@@ -1,0 +1,10 @@
+[Unit]
+Description=SmartGarden auto deploy after green GitHub CI
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/smartgarden-auto-deploy
+WorkingDirectory=/home/pi/SmartGarden
+ExecStart=/bin/bash /home/pi/SmartGarden/scripts/pi-auto-deploy.sh

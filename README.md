@@ -284,6 +284,29 @@ curl -I http://127.0.0.1/
 curl http://127.0.0.1/api/runtime
 ```
 
+### 7. Automatisches Deployment nach grüner CI
+
+GitHub Actions führt Backend-Tests, Frontend-Build und Frontend-Unit-Tests für jeden Branch aus. Der Pi pollt danach GitHub und deployt nur Commits, deren Checks grün sind.
+
+Einmalig auf dem Pi:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io
+sudo usermod -aG docker pi
+cd /home/pi/SmartGarden
+SMARTGARDEN_AUTO_DEPLOY_BRANCH=main bash scripts/install-pi-auto-deploy.sh
+```
+
+Der Timer deployt automatisch den konfigurierten Hauptbranch. Feature-Branches werden nicht automatisch deployt. Bei Bedarf manuell auf dem Pi:
+
+```bash
+cd /home/pi/SmartGarden
+bash scripts/pi-deploy-branch.sh ai
+```
+
+Auch dieser manuelle Feature-Deploy bricht ab, wenn die GitHub-CI für den Branch-Commit nicht grün ist.
+
 ## GPIO-Hinweise
 
 - Lokal: `GPIO_MODE=simulated`

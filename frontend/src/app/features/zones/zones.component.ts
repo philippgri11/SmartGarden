@@ -107,7 +107,12 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
                 aria-label="Zonenbeschreibung per Sprache eingeben"
                 title="Zonenbeschreibung per Sprache eingeben"
               >
-                <span aria-hidden="true">🎙</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+                  <path d="M19 10.5a7 7 0 0 1-14 0" />
+                  <path d="M12 17.5V21" />
+                  <path d="M8.5 21h7" />
+                </svg>
               </button>
             </div>
           </label>
@@ -131,7 +136,12 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
                 aria-label="Anpassungswunsch per Sprache eingeben"
                 title="Anpassungswunsch per Sprache eingeben"
               >
-                <span aria-hidden="true">🎙</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                  <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+                  <path d="M19 10.5a7 7 0 0 1-14 0" />
+                  <path d="M12 17.5V21" />
+                  <path d="M8.5 21h7" />
+                </svg>
               </button>
             </div>
           </label>
@@ -712,8 +722,9 @@ export class ZonesComponent {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = this.preferredAudioMimeType();
       this.audioChunks = [];
-      this.mediaRecorder = new MediaRecorder(stream);
+      this.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           this.audioChunks.push(event.data);
@@ -840,7 +851,7 @@ export class ZonesComponent {
     const base64 = await this.blobToBase64(blob);
     this.api.transcribeZoneAudio({
       audio_base64: base64,
-      filename: 'zone-description.webm',
+      filename: this.audioFilename(blob.type),
       mime_type: blob.type || 'audio/webm',
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: ({ text }) => {
@@ -863,6 +874,35 @@ export class ZonesComponent {
     }
     const current = this.form.controls.zone_profile_description.value.trim();
     this.form.controls.zone_profile_description.setValue(current ? `${current}\n${text}` : text);
+  }
+
+  private preferredAudioMimeType(): string {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) {
+      return '';
+    }
+    return [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/ogg',
+      'audio/mp4',
+    ].find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? '';
+  }
+
+  private audioFilename(mimeType: string): string {
+    if (mimeType.includes('ogg')) {
+      return 'zone-description.ogg';
+    }
+    if (mimeType.includes('mp4')) {
+      return 'zone-description.mp4';
+    }
+    if (mimeType.includes('mpeg')) {
+      return 'zone-description.mp3';
+    }
+    if (mimeType.includes('wav')) {
+      return 'zone-description.wav';
+    }
+    return 'zone-description.webm';
   }
 
   private clearZoneRouteParam(): void {
