@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, ViewChild, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -7,10 +7,31 @@ import { combineLatest, map, startWith, Subject, switchMap } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Schedule, Zone } from '../../core/api.models';
+import { TIME_WINDOW_LABELS } from '../../core/zone-profile.utils';
+import { UiPreferencesService } from '../../core/ui-preferences.service';
+import { ExpertSectionComponent } from '../../shared/expert-section.component';
 
 type PlanType = 'fixed' | 'interval';
 type ScheduleStatusFilter = 'all' | 'active' | 'paused';
-type ScheduleTypeFilter = 'all' | 'fixed' | 'interval';
+type ScheduleTypeFilter = 'all' | 'fixed' | 'interval' | 'adaptive';
+type ScenarioField = 'temperatureMaxC' | 'rainLast24hMm' | 'rainNext24hMm' | 'cloudCoverPct' | 'lastRunHoursAgo' | 'alreadyWateredToday';
+
+interface AdaptiveScenario {
+  temperatureMaxC: number;
+  rainLast24hMm: number;
+  rainNext24hMm: number;
+  cloudCoverPct: number;
+  lastRunHoursAgo: number;
+  alreadyWateredToday: boolean;
+}
+
+interface AdaptiveScenarioRow {
+  windowLabel: string;
+  timeLabel: string;
+  decision: string;
+  duration: string;
+  reason: string;
+}
 
 const WEEKDAYS = [
   { id: 'mon', label: 'Mo' },
@@ -25,11 +46,11 @@ const WEEKDAYS = [
 @Component({
   standalone: true,
   selector: 'app-schedules',
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, ExpertSectionComponent],
   template: `
     <section class="page-title">
       <h2>Zeitpläne</h2>
-      <p>Lege feste Zeiten oder wiederkehrende Bewässerungen im Tagesfenster an.</p>
+      <p>Lege feste Zeiten an oder prüfe adaptive KI-Regelpläne für Bereiche.</p>
     </section>
 
     <section class="panel" *ngIf="!showForm()">
@@ -70,6 +91,7 @@ const WEEKDAYS = [
               <option value="all">Alle</option>
               <option value="fixed">Feste Uhrzeit</option>
               <option value="interval">Wiederholen im Zeitraum</option>
+              <option value="adaptive">KI-adaptiv</option>
             </select>
           </label>
         </div>
@@ -185,6 +207,108 @@ const WEEKDAYS = [
       <section class="panel">
         <h3>Bestehende Zeitpläne</h3>
         <div class="schedule-list">
+          <article class="schedule-card" *ngFor="let zone of filteredAdaptiveZones(vm.zones)">
+            <div class="schedule-card-head schedule-card-head-rich">
+              <div class="schedule-card-title">
+                <div class="eyebrow">Bereich</div>
+                <h4>{{ zone.name }}</h4>
+                <p class="schedule-card-summary">{{ adaptiveSummary(zone) }}</p>
+              </div>
+              <div class="schedule-card-badges">
+                <span class="status-chip" [class.status-paused]="!zone.active">{{ zone.active ? 'Aktiv' : 'Pausiert' }}</span>
+                <span class="schedule-type-chip">KI-adaptiv</span>
+              </div>
+            </div>
+
+            <div class="schedule-chip-row">
+              <span class="schedule-weekday-chip" *ngFor="let window of adaptiveWindows(zone)">{{ window }}</span>
+            </div>
+
+            <div class="schedule-meta-grid">
+              <div class="schedule-meta-item" title="Der Scheduler prüft nur diese Zeitfenster. Ob ein Lauf entsteht, entscheidet die Wetter- und Zonenformel.">
+                <span>Zeitfenster</span>
+                <strong>{{ adaptiveWindowText(zone) }}</strong>
+              </div>
+              <div class="schedule-meta-item" title="Aus der Basisdauer wird die tatsächliche Laufzeit berechnet: Hitze, Sonne und Austrocknung erhöhen, wirksamer Regen reduziert.">
+                <span>Adaptive Laufzeit</span>
+                <strong>{{ adaptiveDurationText(zone) }}</strong>
+              </div>
+              <div class="schedule-meta-item" title="Der Mindestabstand verhindert, dass der adaptive Modus zu häufig automatisch startet. Manuelle Läufe bleiben davon unberührt.">
+                <span>Mindestabstand</span>
+                <strong>{{ zone.adaptive_irrigation_plan?.minIntervalHours ?? 0 }} Std.</strong>
+              </div>
+            </div>
+
+            <p class="schedule-note">{{ adaptiveWeatherNote(zone) }}</p>
+            <ul class="schedule-rule-list" *ngIf="zone.adaptive_irrigation_plan?.rules?.length">
+              <li *ngFor="let rule of zone.adaptive_irrigation_plan?.rules">{{ rule }}</li>
+            </ul>
+
+            <app-expert-section [enabled]="expertMode()" title="Technische Regel und Szenario-Rechner">
+              <div class="technical-rule">
+                <strong>Konkrete Regel</strong>
+                <pre>{{ technicalRule(zone) }}</pre>
+              </div>
+
+              <div class="form-grid form-grid-balanced scenario-grid">
+                <label class="field field-span-2" title="Tageshöchsttemperatur im Beispiel. Höhere Werte erhöhen den Bedarf abhängig von der Hitzereaktion der Zone.">
+                  <span>Tageshöchsttemperatur °C</span>
+                  <input type="number" [value]="scenarioValue(zone.id, 'temperatureMaxC')" (input)="updateScenario(zone.id, 'temperatureMaxC', $any($event.target).value)" />
+                </label>
+                <label class="field field-span-2" title="Regen der letzten 24 Stunden. Er reduziert den Bedarf nur nach Regenwirksamkeit der Zone.">
+                  <span>Regen letzte 24h mm</span>
+                  <input type="number" min="0" step="0.1" [value]="scenarioValue(zone.id, 'rainLast24hMm')" (input)="updateScenario(zone.id, 'rainLast24hMm', $any($event.target).value)" />
+                </label>
+                <label class="field field-span-2" title="Regenprognose der nächsten 24 Stunden. Sie zählt halb in die Regenanrechnung und kann Läufe verschieben.">
+                  <span>Regen nächste 24h mm</span>
+                  <input type="number" min="0" step="0.1" [value]="scenarioValue(zone.id, 'rainNext24hMm')" (input)="updateScenario(zone.id, 'rainNext24hMm', $any($event.target).value)" />
+                </label>
+                <label class="field field-span-2" title="Bewölkung im Beispiel. Wenig Bewölkung erhöht den Sonnenfaktor abhängig von der Sonnenreaktion.">
+                  <span>Bewölkung %</span>
+                  <input type="number" min="0" max="100" [value]="scenarioValue(zone.id, 'cloudCoverPct')" (input)="updateScenario(zone.id, 'cloudCoverPct', $any($event.target).value)" />
+                </label>
+                <label class="field field-span-2" title="Stunden seit dem letzten adaptiven Lauf. Unterhalb des Mindestabstands wird nicht automatisch gegossen.">
+                  <span>Letzter Lauf vor Std.</span>
+                  <input type="number" min="0" [value]="scenarioValue(zone.id, 'lastRunHoursAgo')" (input)="updateScenario(zone.id, 'lastRunHoursAgo', $any($event.target).value)" />
+                </label>
+                <label class="field field-span-2" title="Wenn heute schon automatisch gegossen wurde und kein zweiter Lauf erlaubt ist, bleibt der nächste Lauf aus.">
+                  <span>Heute schon gegossen</span>
+                  <select [value]="scenarioValue(zone.id, 'alreadyWateredToday')" (change)="updateScenario(zone.id, 'alreadyWateredToday', $any($event.target).value)">
+                    <option [value]="false">Nein</option>
+                    <option [value]="true">Ja</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="scenario-table-wrap">
+                <table class="scenario-table">
+                  <thead>
+                    <tr>
+                      <th>Fenster</th>
+                      <th>Zeit</th>
+                      <th>Entscheidung</th>
+                      <th>Dauer</th>
+                      <th>Warum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let row of adaptiveScenarioRows(zone)">
+                      <td>{{ row.windowLabel }}</td>
+                      <td>{{ row.timeLabel }}</td>
+                      <td>{{ row.decision }}</td>
+                      <td>{{ row.duration }}</td>
+                      <td>{{ row.reason }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </app-expert-section>
+
+            <div class="toolbar schedule-card-actions">
+              <button class="button secondary" type="button" (click)="openAdaptiveZone(zone.id)">Regeln bearbeiten</button>
+            </div>
+          </article>
+
           <article class="schedule-card" *ngFor="let schedule of filteredSchedules(vm.schedules)">
             <div class="schedule-card-head schedule-card-head-rich">
               <div class="schedule-card-title">
@@ -225,7 +349,7 @@ const WEEKDAYS = [
             </div>
           </article>
         </div>
-        <p class="muted" *ngIf="filteredSchedules(vm.schedules).length === 0">Für den aktuellen Filter wurden keine Zeitpläne gefunden.</p>
+        <p class="muted" *ngIf="filteredSchedules(vm.schedules).length + filteredAdaptiveZones(vm.zones).length === 0">Für den aktuellen Filter wurden keine Zeitpläne gefunden.</p>
       </section>
     </ng-container>
   `,
@@ -239,6 +363,7 @@ export class SchedulesComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly preferences = inject(UiPreferencesService);
   private readonly reload$ = new Subject<void>();
 
   readonly weekdays = WEEKDAYS;
@@ -249,6 +374,8 @@ export class SchedulesComponent {
   readonly zoneFilter = signal<number | null>(null);
   readonly statusFilter = signal<ScheduleStatusFilter>('all');
   readonly typeFilter = signal<ScheduleTypeFilter>('all');
+  readonly expertMode = computed(() => this.preferences.expertMode());
+  readonly scenarioByZone = signal<Record<number, AdaptiveScenario>>({});
   selectedSchedule: Schedule | null = null;
   private latestZones: Zone[] = [];
 
@@ -410,6 +537,9 @@ export class SchedulesComponent {
   }
 
   filteredSchedules(schedules: Schedule[]): Schedule[] {
+    if (this.typeFilter() === 'adaptive') {
+      return [];
+    }
     return schedules.filter((schedule) => {
       if (this.zoneFilter() !== null && schedule.zone_id !== this.zoneFilter()) {
         return false;
@@ -430,8 +560,33 @@ export class SchedulesComponent {
     });
   }
 
+  filteredAdaptiveZones(zones: Zone[]): Zone[] {
+    if (this.typeFilter() === 'fixed' || this.typeFilter() === 'interval') {
+      return [];
+    }
+    return zones.filter((zone) => {
+      if (zone.scheduling_mode !== 'adaptive' || !zone.adaptive_irrigation_plan) {
+        return false;
+      }
+      if (this.zoneFilter() !== null && zone.id !== this.zoneFilter()) {
+        return false;
+      }
+      if (this.statusFilter() === 'active' && !zone.active) {
+        return false;
+      }
+      if (this.statusFilter() === 'paused' && zone.active) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   remove(id: number): void {
     this.api.deleteSchedule(id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.reload$.next());
+  }
+
+  openAdaptiveZone(zoneId: number): void {
+    void this.router.navigate(['/areas'], { queryParams: { zoneId } });
   }
 
   zoneName(zones: Zone[], zoneId: number): string {
@@ -533,5 +688,217 @@ export class SchedulesComponent {
       return `${weekdays} zwischen ${this.formatTime(schedule.window_start)} und ${this.formatTime(schedule.window_end)} Uhr, alle ${schedule.interval_hours} Stunden.`;
     }
     return `${weekdays} um ${this.formatTime(schedule.start_time)} Uhr für ${this.durationLabel(schedule.duration_minutes)}.`;
+  }
+
+  adaptiveWindows(zone: Zone): string[] {
+    return (zone.adaptive_irrigation_plan?.preferredTimeWindows ?? []).map((window) => TIME_WINDOW_LABELS[window] ?? window);
+  }
+
+  adaptiveWindowText(zone: Zone): string {
+    const labels = this.adaptiveWindows(zone);
+    return labels.length ? labels.join(', ') : 'Noch nicht festgelegt';
+  }
+
+  adaptiveDurationText(zone: Zone): string {
+    const plan = zone.adaptive_irrigation_plan;
+    if (!plan) {
+      return 'Noch nicht festgelegt';
+    }
+    return `${plan.minDurationMinutes}-${plan.maxDurationMinutes} Min., Basis ${plan.baseDurationMinutes} Min.`;
+  }
+
+  adaptiveSummary(zone: Zone): string {
+    const plan = zone.adaptive_irrigation_plan;
+    if (!plan) {
+      return 'Adaptive Regeln sind noch nicht vollständig gespeichert.';
+    }
+    const secondRun = plan.allowSecondDailyRun ? 'zweiter Lauf bei hohem Bedarf möglich' : 'maximal ein automatischer Lauf pro Tag';
+    return `Wetterbasierter Regelplan: ${this.adaptiveWindowText(zone)}, ${secondRun}.`;
+  }
+
+  adaptiveWeatherNote(zone: Zone): string {
+    const plan = zone.adaptive_irrigation_plan;
+    if (!plan) {
+      return 'Dieser Bereich ist auf adaptiv gestellt, hat aber noch keinen Regelplan.';
+    }
+    const midday = plan.avoidMidday ? 'Mittag wird vermieden.' : 'Mittag ist fachlich erlaubt, zum Beispiel bei Tröpfchenbewässerung.';
+    return `Regen-Skip ab ${plan.rainSkipThresholdMm} mm wirksamem Regen, Verzögerung ab ${plan.rainDelayThresholdMm} mm Prognose. ${midday}`;
+  }
+
+  technicalRule(zone: Zone): string {
+    const plan = zone.adaptive_irrigation_plan;
+    const profile = zone.irrigation_profile;
+    if (!plan || !profile) {
+      return 'Kein vollständiger adaptiver Regelplan gespeichert.';
+    }
+    return [
+      `Fenster = ${plan.preferredTimeWindows.join(', ')}`,
+      `Basisdauer = ${plan.baseDurationMinutes} min, clamp(${plan.minDurationMinutes}, ${Math.min(plan.maxDurationMinutes, zone.max_duration_minutes)})`,
+      `Mindestabstand = ${plan.minIntervalHours} h, zweiter Tageslauf = ${plan.allowSecondDailyRun ? 'ja' : 'nein'}`,
+      `tempFactor = clamp(1 + clamp((Tmax - 22) / 14, -0.5, 1.0) * 0.35 * ${profile.temperatureSensitivity}, 0.75, 1.7)`,
+      `sunFactor = clamp(1 + ((1 - Bewölkung/100) - 0.45) * 0.4 * ${profile.sunSensitivity}, 0.75, 1.5)`,
+      `containerFactor = 1 + (${profile.containerFactor} - 1) * 0.25`,
+      `estimatedNeed = ${profile.baseWaterNeedMmPerDay} * tempFactor * sunFactor * containerFactor * strategy(${profile.strategy}) * drying(${profile.dryingSpeed})`,
+      `effectiveRain = (Regen24h + Prognose24h * 0.5) * ${profile.rainEffectiveness}`,
+      `netNeed = max(0, estimatedNeed - effectiveRain)`,
+      `duration = round(${plan.baseDurationMinutes} * clamp(netNeed / ${profile.baseWaterNeedMmPerDay}, 0.35, 1.6))`,
+      `skip wenn effectiveRain >= ${plan.rainSkipThresholdMm} mm oder netNeed < 0.6 mm`,
+      `delay wenn Prognose24h >= ${plan.rainDelayThresholdMm} mm und netNeed < ${plan.highNeedThresholdMm} mm`,
+    ].join('\n');
+  }
+
+  scenarioValue(zoneId: number, field: ScenarioField): number | boolean {
+    return this.scenarioFor(zoneId)[field];
+  }
+
+  updateScenario(zoneId: number, field: ScenarioField, rawValue: string): void {
+    this.scenarioByZone.update((current) => {
+      const previous = this.scenarioFor(zoneId);
+      const next: AdaptiveScenario = {
+        ...previous,
+        [field]: field === 'alreadyWateredToday' ? rawValue === 'true' : Number(rawValue),
+      };
+      return { ...current, [zoneId]: next };
+    });
+  }
+
+  adaptiveScenarioRows(zone: Zone): AdaptiveScenarioRow[] {
+    const plan = zone.adaptive_irrigation_plan;
+    const profile = zone.irrigation_profile;
+    if (!plan || !profile) {
+      return [];
+    }
+    const scenario = this.scenarioFor(zone.id);
+    const windows = this.expandAdaptiveWindows(plan.preferredTimeWindows);
+    return windows.map((window) => this.adaptiveScenarioRow(zone, window, scenario));
+  }
+
+  private scenarioFor(zoneId: number): AdaptiveScenario {
+    return this.scenarioByZone()[zoneId] ?? {
+      temperatureMaxC: 30,
+      rainLast24hMm: 0,
+      rainNext24hMm: 0,
+      cloudCoverPct: 20,
+      lastRunHoursAgo: 24,
+      alreadyWateredToday: false,
+    };
+  }
+
+  private adaptiveScenarioRow(zone: Zone, window: string, scenario: AdaptiveScenario): AdaptiveScenarioRow {
+    const plan = zone.adaptive_irrigation_plan!;
+    const profile = zone.irrigation_profile!;
+    const windowLabel = TIME_WINDOW_LABELS[window as keyof typeof TIME_WINDOW_LABELS] ?? window;
+    const timeLabel = this.adaptiveWindowStart(window);
+    if (scenario.lastRunHoursAgo < plan.minIntervalHours) {
+      return {
+        windowLabel,
+        timeLabel,
+        decision: 'Kein Lauf',
+        duration: '0 min',
+        reason: `Mindestabstand ${plan.minIntervalHours} h, im Beispiel erst ${scenario.lastRunHoursAgo} h seit dem letzten Lauf.`,
+      };
+    }
+    if (scenario.alreadyWateredToday && !plan.allowSecondDailyRun) {
+      return {
+        windowLabel,
+        timeLabel,
+        decision: 'Kein Lauf',
+        duration: '0 min',
+        reason: 'Heute wurde bereits automatisch gegossen und der Plan erlaubt keinen zweiten Tageslauf.',
+      };
+    }
+    const result = this.calculateAdaptiveNeed(zone, scenario);
+    if (result.effectiveRain >= plan.rainSkipThresholdMm && profile.riskProfile !== 'avoid_drought_stress') {
+      return {
+        windowLabel,
+        timeLabel,
+        decision: 'Überspringen',
+        duration: '0 min',
+        reason: `Wirksamer Regen ${this.formatNumber(result.effectiveRain)} mm erreicht die Skip-Schwelle ${plan.rainSkipThresholdMm} mm.`,
+      };
+    }
+    if (scenario.rainNext24hMm >= plan.rainDelayThresholdMm && result.netNeed < plan.highNeedThresholdMm) {
+      return {
+        windowLabel,
+        timeLabel,
+        decision: 'Verschieben',
+        duration: '0 min',
+        reason: `Regenprognose ${this.formatNumber(scenario.rainNext24hMm)} mm und Netto-Bedarf ${this.formatNumber(result.netNeed)} mm liegt unter ${plan.highNeedThresholdMm} mm.`,
+      };
+    }
+    if (result.netNeed < 0.6 && profile.riskProfile !== 'avoid_drought_stress') {
+      return {
+        windowLabel,
+        timeLabel,
+        decision: 'Überspringen',
+        duration: '0 min',
+        reason: `Netto-Bedarf nur ${this.formatNumber(result.netNeed)} mm.`,
+      };
+    }
+    return {
+      windowLabel,
+      timeLabel,
+      decision: 'Bewässern',
+      duration: `${result.durationMinutes} min`,
+      reason: `Netto-Bedarf ${this.formatNumber(result.netNeed)} mm, Faktor ${this.formatNumber(result.multiplier)} auf Basis ${plan.baseDurationMinutes} min.`,
+    };
+  }
+
+  private calculateAdaptiveNeed(zone: Zone, scenario: AdaptiveScenario): { effectiveRain: number; netNeed: number; multiplier: number; durationMinutes: number } {
+    const plan = zone.adaptive_irrigation_plan!;
+    const profile = zone.irrigation_profile!;
+    const tempPressure = this.clamp((scenario.temperatureMaxC - 22) / 14, -0.5, 1.0);
+    const tempFactor = this.clamp(1 + tempPressure * 0.35 * profile.temperatureSensitivity, 0.75, 1.7);
+    const sunIndex = this.clamp(1 - scenario.cloudCoverPct / 100, 0, 1);
+    const sunFactor = this.clamp(1 + (sunIndex - 0.45) * 0.4 * profile.sunSensitivity, 0.75, 1.5);
+    const containerFactor = 1 + (profile.containerFactor - 1) * 0.25;
+    const strategyFactor = profile.strategy === 'water_saving' ? 0.9 : profile.strategy === 'growth_oriented' ? 1.08 : 1;
+    const dryingFactor = profile.dryingSpeed === 'slow' ? 0.9 : profile.dryingSpeed === 'fast' ? 1.1 : profile.dryingSpeed === 'very_fast' ? 1.2 : 1;
+    const estimatedNeed = profile.baseWaterNeedMmPerDay * tempFactor * sunFactor * containerFactor * strategyFactor * dryingFactor;
+    const effectiveRain = (scenario.rainLast24hMm + scenario.rainNext24hMm * 0.5) * profile.rainEffectiveness;
+    const netNeed = Math.max(0, estimatedNeed - effectiveRain);
+    let multiplier = this.clamp(netNeed / Math.max(profile.baseWaterNeedMmPerDay, 0.1), 0.35, 1.6);
+    if (profile.riskProfile === 'avoid_drought_stress') {
+      multiplier = Math.max(multiplier, 0.6);
+    }
+    if (profile.riskProfile === 'avoid_overwatering') {
+      multiplier = Math.min(multiplier, 1.2);
+    }
+    const duration = Math.round(plan.baseDurationMinutes * multiplier);
+    return {
+      effectiveRain,
+      netNeed,
+      multiplier,
+      durationMinutes: Math.max(plan.minDurationMinutes, Math.min(duration, plan.maxDurationMinutes, zone.max_duration_minutes)),
+    };
+  }
+
+  private expandAdaptiveWindows(windows: string[]): string[] {
+    const result: string[] = [];
+    for (const window of windows.length ? windows : ['early_morning']) {
+      if (window === 'morning_and_evening') {
+        result.push('early_morning', 'evening');
+      } else {
+        result.push(window);
+      }
+    }
+    return Array.from(new Set(result));
+  }
+
+  private adaptiveWindowStart(window: string): string {
+    const mapping: Record<string, string> = {
+      early_morning: '05:30',
+      morning: '07:00',
+      evening: '19:00',
+    };
+    return mapping[window] ?? 'nach Regel';
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private formatNumber(value: number): string {
+    return value.toFixed(2).replace('.', ',');
   }
 }

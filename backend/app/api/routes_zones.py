@@ -3,12 +3,71 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_app_settings, get_db
 from app.application.runtime_service import RuntimeService
-from app.application.schemas import ZoneCreate, ZoneResponse, ZoneUpdate
+from app.application.schemas import (
+    ZoneCreate,
+    ZoneAdaptivePlanRequest,
+    ZoneAdaptivePlanResponse,
+    ZoneAssistantTranscriptionRequest,
+    ZoneAssistantTranscriptionResponse,
+    ZoneProfileAdjustmentRequest,
+    ZoneProfileSuggestionRequest,
+    ZoneProfileSuggestionResponse,
+    ZoneResponse,
+    ZoneUpdate,
+)
+from app.application.zone_profile_service import ZoneProfileService
 from app.application.zone_service import ZoneService
 from app.config import Settings
 
 
 router = APIRouter(prefix="/zones", tags=["zones"])
+
+
+@router.post("/assistant/suggest", response_model=ZoneProfileSuggestionResponse)
+def suggest_zone_profile(
+    payload: ZoneProfileSuggestionRequest,
+    db: Session = Depends(get_db),
+    app_settings: Settings = Depends(get_app_settings),
+) -> ZoneProfileSuggestionResponse:
+    return ZoneProfileService(db, app_settings).suggest(payload.description, payload.current_profile)
+
+
+@router.post("/{zone_id}/assistant/adjust", response_model=ZoneProfileSuggestionResponse)
+def adjust_zone_profile(
+    zone_id: int,
+    payload: ZoneProfileAdjustmentRequest,
+    db: Session = Depends(get_db),
+    app_settings: Settings = Depends(get_app_settings),
+) -> ZoneProfileSuggestionResponse:
+    zone = ZoneService(db).zones.get(zone_id)
+    if not zone:
+        raise HTTPException(status_code=404, detail="zone not found")
+    return ZoneProfileService(db, app_settings).adjust_zone(zone, payload)
+
+
+@router.post("/assistant/adaptive-plan", response_model=ZoneAdaptivePlanResponse)
+def suggest_adaptive_plan(
+    payload: ZoneAdaptivePlanRequest,
+    db: Session = Depends(get_db),
+    app_settings: Settings = Depends(get_app_settings),
+) -> ZoneAdaptivePlanResponse:
+    return ZoneProfileService(db, app_settings).suggest_adaptive_plan(
+        description=payload.description,
+        profile=payload.profile,
+        max_duration_minutes=payload.max_duration_minutes,
+    )
+
+
+@router.post("/assistant/transcribe", response_model=ZoneAssistantTranscriptionResponse)
+def transcribe_zone_audio(
+    payload: ZoneAssistantTranscriptionRequest,
+    db: Session = Depends(get_db),
+    app_settings: Settings = Depends(get_app_settings),
+) -> ZoneAssistantTranscriptionResponse:
+    try:
+        return ZoneProfileService(db, app_settings).transcribe_audio(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("", response_model=list[ZoneResponse])

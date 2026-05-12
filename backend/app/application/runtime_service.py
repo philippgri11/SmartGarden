@@ -85,14 +85,18 @@ class RuntimeService:
         effective_probability_threshold = zone.weather_probability_threshold or app_settings.weather_probability_threshold
         effective_precipitation_threshold = zone.weather_precipitation_mm_threshold or app_settings.weather_precipitation_mm_threshold
         schedule_weather_enabled = any(schedule.active and schedule.weather_enabled for schedule in zone.schedules)
-        weather_enabled_effective = bool(app_settings.weather_enabled and (zone.weather_enabled or schedule_weather_enabled))
+        weather_enabled_effective = bool(app_settings.weather_enabled and (zone.weather_enabled or schedule_weather_enabled or zone.scheduling_mode == "adaptive"))
 
         next_candidates = [
             next_schedule_occurrence(schedule, now)
             for schedule in zone.schedules
-            if schedule.active
+            if schedule.active and zone.scheduling_mode == "static"
         ]
         next_candidates = [candidate for candidate in next_candidates if candidate is not None]
+        if zone.scheduling_mode == "adaptive" and zone.adaptive_irrigation_plan_json:
+            adaptive_next = self._next_adaptive_occurrence(zone=zone, now=now)
+            if adaptive_next is not None:
+                next_candidates.append(adaptive_next)
         next_watering_at = min(next_candidates) if next_candidates else None
 
         run_state = self._derive_run_state(current_run)
@@ -165,6 +169,10 @@ class RuntimeService:
             "weather_decision": weather_snapshot["decision"],
             "weather_reason_human": weather_snapshot["reason_human"],
             "weather_snapshot": weather_snapshot,
+            "zone_profile_description": zone.zone_profile_description,
+            "irrigation_profile": zone.irrigation_profile_json,
+            "scheduling_mode": zone.scheduling_mode,
+            "adaptive_irrigation_plan": zone.adaptive_irrigation_plan_json,
             "manual_start_allowed": manual_start_block_reason is None,
             "manual_start_block_reason": manual_start_block_reason,
             "active_shape_count": len(zone.map_shapes),
@@ -176,7 +184,7 @@ class RuntimeService:
         next_candidates: list[datetime] = []
         for schedule in active_schedules:
             zone = next((item for item in areas if item["id"] == schedule.zone_id), None)
-            if not zone or not zone["active"]:
+            if not zone or not zone["active"] or zone.get("scheduling_mode") == "adaptive":
                 continue
             active_schedule_count += 1
             occurrence = next_schedule_occurrence(schedule, now)
@@ -184,6 +192,9 @@ class RuntimeService:
                 next_candidates.append(occurrence)
 
         next_watering_at = min(next_candidates) if next_candidates else None
+        adaptive_next_candidates = [area.get("next_watering_at") for area in areas if area.get("scheduling_mode") == "adaptive" and area.get("next_watering_at")]
+        if adaptive_next_candidates:
+            next_watering_at = min([candidate for candidate in [next_watering_at, *adaptive_next_candidates] if candidate is not None])
         last_area = next(
             (area for area in sorted(areas, key=lambda item: item["last_watering_at"] or datetime.min.replace(tzinfo=UTC), reverse=True) if area["last_watering_at"]),
             None,
@@ -319,6 +330,14 @@ class RuntimeService:
         for run in runs:
             grouped[run.zone_id].append(run)
         return grouped
+
+    def _next_adaptive_occurrence(self, *, zone: orm.Zone, now: datetime) -> datetime | None:
+        from app.domain.adaptive_irrigation import next_adaptive_slot
+
+        try:
+            return next_adaptive_slot(zone.adaptive_irrigation_plan_json or {}, now=now)
+        except Exception:  # noqa: BLE001
+            return None
 
     @staticmethod
     def _derive_run_state(current_run: orm.WateringRun | None) -> str:

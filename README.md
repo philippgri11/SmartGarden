@@ -233,6 +233,7 @@ Dabei gilt auf dem Pi:
 Vor dem Pi-Deployment:
 
 - `.env` mit echtem `POSTGRES_PASSWORD` anlegen
+- optional `OPENAI_API_KEY` als Kubernetes-Secret setzen, damit der KI-Zonenassistent die ChatGPT API nutzt; ohne Key fällt das Backend auf die lokale fachliche Vorschlagslogik zurück
 - optional `k8s/secret.example.yaml` als Vorlage ansehen, aber nicht direkt verwenden
 - Images auf dem Pi oder in einer erreichbaren Registry bereitstellen
 

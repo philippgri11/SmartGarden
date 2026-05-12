@@ -15,3 +15,4 @@ data:
   DEFAULT_LONGITUDE: "13.405"
   FRONTEND_ORIGIN: http://frontend.irrigation.local
   SCHEDULER_POLL_SECONDS: "2"
+  OPENAI_MODEL: gpt-4.1-mini

@@ -77,6 +77,10 @@ def test_build_live_overview_uses_current_forecast_values(db_session) -> None:
             current_weather_code=0,
             current_is_day=True,
             current_temperature_c=22.4,
+            temperature_max_24h_c=24.0,
+            precipitation_last_24h_mm=0.0,
+            precipitation_next_24h_mm=0.4,
+            cloud_cover_avg_pct=20.0,
             raw_response={},
         ),
     )

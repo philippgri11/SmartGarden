@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     weather_default_probability_threshold: int = 70
     weather_default_precipitation_mm_threshold: float = 2.0
 
+    openai_api_key: str | None = Field(default=None, repr=False)
+    openai_model: str = "gpt-4.1-mini"
+    openai_transcription_model: str = "whisper-1"
+    openai_timeout_seconds: float = 20.0
+    zone_assistant_use_openai: bool = True
+
     scheduler_enabled: bool = False
     scheduler_poll_seconds: int = 2
     scheduler_due_grace_minutes: int = 10

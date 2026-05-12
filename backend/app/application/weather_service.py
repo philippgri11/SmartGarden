@@ -56,7 +56,11 @@ class WeatherService:
 
     def evaluate(self, *, zone: Zone, schedule: Schedule | None) -> tuple[WeatherPolicyResult, WeatherForecastSummary | None, AppSetting]:
         app_settings = self.get_settings()
-        enabled = app_settings.weather_enabled and (zone.weather_enabled or (schedule.weather_enabled if schedule else False))
+        enabled = app_settings.weather_enabled and (
+            zone.weather_enabled
+            or (schedule.weather_enabled if schedule else False)
+            or getattr(zone, "scheduling_mode", "static") == "adaptive"
+        )
         probability_threshold = (
             (schedule.weather_probability_threshold if schedule and schedule.weather_probability_threshold is not None else None)
             or zone.weather_probability_threshold
@@ -144,6 +148,10 @@ class WeatherService:
             current_weather_code=forecast_summary.current_weather_code if forecast_summary else None,
             current_is_day=forecast_summary.current_is_day if forecast_summary else None,
             current_temperature_c=forecast_summary.current_temperature_c if forecast_summary else None,
+            temperature_max_24h_c=forecast_summary.temperature_max_24h_c if forecast_summary else None,
+            precipitation_last_24h_mm=forecast_summary.precipitation_last_24h_mm if forecast_summary else None,
+            precipitation_next_24h_mm=forecast_summary.precipitation_next_24h_mm if forecast_summary else None,
+            cloud_cover_avg_pct=forecast_summary.cloud_cover_avg_pct if forecast_summary else None,
         )
 
     def humanize_reason(
@@ -197,6 +205,11 @@ class WeatherService:
         current_weather_code: int | None = None,
         current_is_day: bool | None = None,
         current_temperature_c: float | None = None,
+        temperature_max_24h_c: float | None = None,
+        precipitation_last_24h_mm: float | None = None,
+        precipitation_next_24h_mm: float | None = None,
+        cloud_cover_avg_pct: float | None = None,
+        irrigation_recommendation: dict | None = None,
     ) -> dict:
         normalized_decision = self._normalize_decision(
             weather_enabled=weather_enabled,
@@ -233,6 +246,10 @@ class WeatherService:
             "current_weather_code": current_weather_code,
             "current_is_day": current_is_day,
             "current_temperature_c": current_temperature_c,
+            "temperature_max_24h_c": temperature_max_24h_c,
+            "precipitation_last_24h_mm": precipitation_last_24h_mm,
+            "precipitation_next_24h_mm": precipitation_next_24h_mm,
+            "cloud_cover_avg_pct": cloud_cover_avg_pct,
             "forecast_window_hours": app_settings.weather_window_hours,
             "precipitation_probability_max": probability_max,
             "precipitation_sum_mm": precipitation_sum_mm,
@@ -242,6 +259,7 @@ class WeatherService:
             "source_status": source_status,
             "checked_at": checked_at,
             "reason_human": reason_human,
+            "irrigation_recommendation": irrigation_recommendation,
         }
 
     def overview_from_decision(
@@ -263,6 +281,12 @@ class WeatherService:
             precipitation_sum_mm=decision.precipitation_sum_mm if decision else None,
             probability_threshold=probability_threshold,
             precipitation_threshold_mm=precipitation_threshold_mm,
+            current_temperature_c=(decision.raw_response or {}).get("current", {}).get("temperature_2m") if decision else None,
+            temperature_max_24h_c=(decision.raw_response or {}).get("irrigation_weather", {}).get("temperature_max_24h_c") if decision else None,
+            precipitation_last_24h_mm=(decision.raw_response or {}).get("irrigation_weather", {}).get("precipitation_last_24h_mm") if decision else None,
+            precipitation_next_24h_mm=(decision.raw_response or {}).get("irrigation_weather", {}).get("precipitation_next_24h_mm") if decision else None,
+            cloud_cover_avg_pct=(decision.raw_response or {}).get("irrigation_weather", {}).get("cloud_cover_avg_pct") if decision else None,
+            irrigation_recommendation=(decision.raw_response or {}).get("irrigation_recommendation") if decision else None,
         )
 
     @staticmethod

@@ -16,6 +16,7 @@ kubectl apply -f "$ROOT_DIR/k8s/namespace.yaml"
 kubectl create secret generic irrigation-secret \
   --namespace irrigation \
   --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}" \
+  --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f "$ROOT_DIR/k8s/configmap.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/postgres-service.yaml"

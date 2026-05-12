@@ -1,7 +1,90 @@
+export interface ZoneIrrigationProfile {
+  zoneType: 'lawn' | 'bed' | 'raised_bed' | 'container' | 'greenhouse' | 'hedge' | 'other';
+  plantType: 'grass' | 'vegetables' | 'flowers' | 'herbs' | 'shrubs' | 'trees' | 'mixed' | 'unknown';
+  sunExposure: 'shade' | 'partial_shade' | 'sunny' | 'full_sun';
+  rainExposure: 'none' | 'low' | 'medium' | 'high' | 'full';
+  rainEffectiveness: number;
+  waterNeedLevel: 'low' | 'medium' | 'high' | 'very_high';
+  baseWaterNeedMmPerDay: number;
+  temperatureSensitivity: number;
+  sunSensitivity: number;
+  containerFactor: number;
+  dryingSpeed: 'slow' | 'normal' | 'fast' | 'very_fast';
+  wateringFrequencyPreference: 'rare_deep' | 'normal' | 'frequent_short';
+  preferredTimeWindow: 'early_morning' | 'morning' | 'evening' | 'morning_and_evening';
+  strategy: 'water_saving' | 'balanced' | 'growth_oriented';
+  riskProfile: 'avoid_overwatering' | 'balanced' | 'avoid_drought_stress';
+  explanation: string;
+}
+
+export interface ZoneProfileDiffItem {
+  field: keyof ZoneIrrigationProfile | string;
+  label: string;
+  before_display: string;
+  after_display: string;
+}
+
+export interface ZoneProfileSuggestionRequest {
+  description: string;
+  current_profile?: ZoneIrrigationProfile | null;
+}
+
+export interface ZoneProfileAdjustmentRequest {
+  instruction: string;
+  description?: string | null;
+  current_profile?: ZoneIrrigationProfile | null;
+}
+
+export interface ZoneProfileSuggestionResponse {
+  profile: ZoneIrrigationProfile;
+  explanation: string;
+  warnings: string[];
+  summary: string[];
+  diff: ZoneProfileDiffItem[];
+}
+
+export interface AdaptiveIrrigationPlan {
+  irrigationMethod: 'sprinkler' | 'drip' | 'soaker_hose' | 'manual' | 'unknown';
+  preferredTimeWindows: Array<'early_morning' | 'morning' | 'evening' | 'morning_and_evening'>;
+  avoidMidday: boolean;
+  allowSecondDailyRun: boolean;
+  minIntervalHours: number;
+  baseDurationMinutes: number;
+  minDurationMinutes: number;
+  maxDurationMinutes: number;
+  rainSkipThresholdMm: number;
+  rainDelayThresholdMm: number;
+  heatThresholdC: number;
+  highNeedThresholdMm: number;
+  rules: string[];
+  explanation: string;
+}
+
+export interface ZoneAdaptivePlanRequest {
+  description?: string | null;
+  profile: ZoneIrrigationProfile;
+  max_duration_minutes: number;
+}
+
+export interface ZoneAdaptivePlanResponse {
+  plan: AdaptiveIrrigationPlan;
+  warnings: string[];
+  explanation: string;
+  summary: string[];
+}
+
+export interface ZoneAssistantTranscriptionResponse {
+  text: string;
+}
+
 export interface Zone {
   id: number;
   name: string;
   description?: string | null;
+  zone_profile_description?: string | null;
+  irrigation_profile?: ZoneIrrigationProfile | null;
+  scheduling_mode: 'static' | 'adaptive';
+  adaptive_irrigation_plan?: AdaptiveIrrigationPlan | null;
   gpio_chip: string;
   gpio_line: number;
   active: boolean;
@@ -69,6 +152,10 @@ export interface WeatherOverview {
   current_weather_code?: number | null;
   current_is_day?: boolean | null;
   current_temperature_c?: number | null;
+  temperature_max_24h_c?: number | null;
+  precipitation_last_24h_mm?: number | null;
+  precipitation_next_24h_mm?: number | null;
+  cloud_cover_avg_pct?: number | null;
   forecast_window_hours: number;
   precipitation_probability_max?: number | null;
   precipitation_sum_mm?: number | null;
@@ -78,6 +165,19 @@ export interface WeatherOverview {
   source_status: 'fresh' | 'stale' | 'unavailable';
   checked_at?: string | null;
   reason_human: string;
+  irrigation_recommendation?: ZoneIrrigationRecommendation | null;
+}
+
+export interface ZoneIrrigationRecommendation {
+  decision: 'allow' | 'skip';
+  adjusted_duration_minutes: number;
+  scheduled_duration_minutes: number;
+  estimated_need_mm: number;
+  effective_rain_mm: number;
+  net_need_mm: number;
+  multiplier: number;
+  explanation: string;
+  details: string[];
 }
 
 export interface WateringRun {

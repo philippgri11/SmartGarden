@@ -117,6 +117,10 @@ def test_runtime_snapshot_refreshes_weather_values_when_stored_decision_is_incom
             current_weather_code=2,
             current_is_day=True,
             current_temperature_c=19.5,
+            temperature_max_24h_c=21.0,
+            precipitation_last_24h_mm=0.0,
+            precipitation_next_24h_mm=0.2,
+            cloud_cover_avg_pct=45.0,
             raw_response={"mock": True},
         )
 
