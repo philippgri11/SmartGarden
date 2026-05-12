@@ -219,11 +219,69 @@ Hinweis: Für ein echtes lokales k3d-Deployment müssen die Docker-Images im Clu
 ./scripts/deploy-pi.sh
 ```
 
+Das Pi-Deployment nutzt bewusst die Pi-spezifischen Manifeste:
+
+- `k8s/backend-deployment-pi.yaml`
+- `k8s/scheduler-deployment-pi.yaml`
+
+Dabei gilt auf dem Pi:
+
+- `backend` läuft mit `replicas: 1`, damit der kleine Knoten stabil bleibt
+- `scheduler` läuft mit `replicas: 1`
+- das Backend nutzt eine `startupProbe` und großzügigere Health-Probes, damit der API-Server nach Reboots oder auf langsamerem ARM-Storage sauber hochkommt
+
 Vor dem Pi-Deployment:
 
 - `.env` mit echtem `POSTGRES_PASSWORD` anlegen
 - optional `k8s/secret.example.yaml` als Vorlage ansehen, aber nicht direkt verwenden
 - Images auf dem Pi oder in einer erreichbaren Registry bereitstellen
+
+### 4. Feste IP auf dem Pi
+
+Der verifizierte Pi-Betrieb in diesem Projekt nutzt eine feste WLAN-IP:
+
+- Pi-IP: `192.168.178.193`
+- Gateway: `192.168.178.1`
+- DNS: `192.168.178.1`, `1.1.1.1`
+- WLAN: `WLAN-Y23TGM`
+
+Die feste IP wurde über `NetworkManager` auf dem Pi gesetzt. Wenn du sie auf einem anderen Netz übernimmst, passe mindestens diese Werte an:
+
+- `ipv4.addresses`
+- `ipv4.gateway`
+- `ipv4.dns`
+- SSID/WLAN-Profil
+
+### 5. Zugriff im Heimnetz
+
+Nach dem erfolgreichen Pi-Deployment ist SmartGarden direkt über die Pi-IP erreichbar:
+
+- Frontend: `http://192.168.178.193/`
+- API Runtime: `http://192.168.178.193/api/runtime`
+
+Zusätzlich bleiben die Host-basierten Ingress-Regeln erhalten:
+
+- `frontend.irrigation.local`
+- `api.irrigation.local`
+
+### 6. Autostart und Reboot-Verhalten
+
+Der Pi-Stack läuft im Autostart über `k3s`.
+
+Verifiziert wurde:
+
+- `systemctl is-enabled k3s` → `enabled`
+- nach einem echten Reboot kommt der Pi wieder unter `192.168.178.193` hoch
+- `backend`, `frontend`, `postgres` und `scheduler` starten danach automatisch wieder
+
+Praktische Prüfkommandos auf dem Pi:
+
+```bash
+systemctl is-active k3s
+sudo kubectl -n irrigation get pods
+curl -I http://127.0.0.1/
+curl http://127.0.0.1/api/runtime
+```
 
 ## GPIO-Hinweise
 
