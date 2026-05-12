@@ -3,7 +3,8 @@ import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { combineLatest } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { AdaptiveIrrigationPlan, Zone, ZoneAdaptivePlanResponse, ZoneIrrigationProfile, ZoneProfileSuggestionResponse } from '../../core/api.models';
@@ -30,6 +31,8 @@ import {
 import { AreaCardComponent } from '../../shared/area-card.component';
 import { ExpertSectionComponent } from '../../shared/expert-section.component';
 import { RuntimeFacade } from '../../state/runtime/runtime.facade';
+
+type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
 
 @Component({
   standalone: true,
@@ -82,10 +85,6 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
             <option [ngValue]="false">Nein</option>
           </select>
         </label>
-        <label class="field field-full">
-          <span>Beschreibung</span>
-          <textarea formControlName="description"></textarea>
-        </label>
 
         <div class="zone-assistant field-full">
           <div class="section-head">
@@ -97,21 +96,44 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 
           <label class="field">
             <span>Beschreibe diese Zone</span>
-            <textarea formControlName="zone_profile_description" placeholder="Zum Beispiel: Hochbeet mit Tomaten, volle Sonne, Regen kommt gut ran, Erde trocknet schnell aus."></textarea>
+            <div class="voice-input-shell">
+              <textarea formControlName="zone_profile_description" placeholder="Zum Beispiel: Hochbeet mit Tomaten, volle Sonne, Regen kommt gut ran, Erde trocknet schnell aus."></textarea>
+              <button
+                class="microphone-button"
+                type="button"
+                [class.recording]="recordingTarget() === 'zoneDescription'"
+                (click)="toggleRecording('zoneDescription')"
+                [disabled]="assistantBusy()"
+                aria-label="Zonenbeschreibung per Sprache eingeben"
+                title="Zonenbeschreibung per Sprache eingeben"
+              >
+                <span aria-hidden="true">🎙</span>
+              </button>
+            </div>
           </label>
 
           <div class="toolbar">
-            <button class="button secondary" type="button" (click)="toggleRecording()" [disabled]="assistantBusy()">
-              {{ recording() ? 'Aufnahme stoppen' : 'Per Sprache beschreiben' }}
-            </button>
             <button class="button secondary" type="button" (click)="suggestProfile()" [disabled]="assistantBusy()">Parameter vorschlagen</button>
             <button class="button secondary" type="button" *ngIf="selectedArea" (click)="adjustProfile()" [disabled]="assistantBusy() || !adjustmentInstruction().trim()">Parameter per KI anpassen</button>
           </div>
-          <p class="muted" *ngIf="recording()">Aufnahme läuft. Beim Stoppen wird die Beschreibung mit Whisper transkribiert.</p>
+          <p class="muted" *ngIf="recording()">Aufnahme läuft. Tippe erneut auf das Mikrofon, um zu transkribieren.</p>
 
           <label class="field" *ngIf="selectedArea">
             <span>Parameter per KI anpassen</span>
-            <textarea [value]="adjustmentInstruction()" (input)="adjustmentInstruction.set($any($event.target).value)" placeholder="Zum Beispiel: Es wird zu viel bewässert, bitte wassersparender einstellen."></textarea>
+            <div class="voice-input-shell">
+              <textarea [value]="adjustmentInstruction()" (input)="adjustmentInstruction.set($any($event.target).value)" placeholder="Zum Beispiel: Es wird zu viel bewässert, bitte wassersparender einstellen."></textarea>
+              <button
+                class="microphone-button"
+                type="button"
+                [class.recording]="recordingTarget() === 'adjustmentInstruction'"
+                (click)="toggleRecording('adjustmentInstruction')"
+                [disabled]="assistantBusy()"
+                aria-label="Anpassungswunsch per Sprache eingeben"
+                title="Anpassungswunsch per Sprache eingeben"
+              >
+                <span aria-hidden="true">🎙</span>
+              </button>
+            </div>
           </label>
 
           <div class="assistant-suggestion" *ngIf="profileSuggestion() as suggestion">
@@ -331,6 +353,10 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 
         <app-expert-section [enabled]="expertMode()" title="Hardware und Expertenoptionen">
           <div class="form-grid form-grid-balanced">
+            <label class="field field-full">
+              <span>Allgemeine Beschreibung</span>
+              <textarea formControlName="description"></textarea>
+            </label>
             <label class="field field-span-3">
               <span>GPIO-Chip</span>
               <input formControlName="gpio_chip" />
@@ -393,6 +419,7 @@ export class ZonesComponent {
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
   private readonly preferences = inject(UiPreferencesService);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly runtime = inject(RuntimeFacade);
 
@@ -401,6 +428,7 @@ export class ZonesComponent {
   readonly feedbackKind = signal<'success' | 'warning'>('success');
   readonly assistantBusy = signal(false);
   readonly recording = signal(false);
+  readonly recordingTarget = signal<RecordingTarget | null>(null);
   readonly adjustmentInstruction = signal('');
   readonly profileSuggestion = signal<ZoneProfileSuggestionResponse | null>(null);
   readonly planSuggestion = signal<ZoneAdaptivePlanResponse | null>(null);
@@ -481,6 +509,22 @@ export class ZonesComponent {
   readonly formatMm = formatMm;
   readonly diffLabel = diffLabel;
 
+  constructor() {
+    combineLatest([this.vm$, this.route.queryParamMap])
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(([vm, params]) => {
+        const zoneIdParam = params.get('zoneId');
+        const zoneId = zoneIdParam ? Number(zoneIdParam) : NaN;
+        if (!Number.isFinite(zoneId) || this.selectedArea?.id === zoneId) {
+          return;
+        }
+        const area = vm.areas.find((item) => item.id === zoneId);
+        if (area) {
+          this.editArea(area, false);
+        }
+      });
+  }
+
   saveArea(): void {
     const payload = {
       ...this.form.getRawValue(),
@@ -502,14 +546,18 @@ export class ZonesComponent {
     this.selectedArea = null;
     this.showForm.set(true);
     this.resetFormState(false);
+    this.clearZoneRouteParam();
     requestAnimationFrame(() => {
       this.areaFormPanel?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
 
-  editArea(area: Zone): void {
+  editArea(area: Zone, updateRoute = true): void {
     this.selectedArea = area;
     this.showForm.set(true);
+    if (updateRoute) {
+      void this.router.navigate(['/areas'], { queryParams: { zoneId: area.id }, replaceUrl: true });
+    }
     this.form.patchValue({
       name: area.name,
       description: area.description ?? '',
@@ -559,6 +607,7 @@ export class ZonesComponent {
     this.adjustmentInstruction.set('');
     if (closeForm) {
       this.showForm.set(false);
+      this.clearZoneRouteParam();
     }
   }
 
@@ -652,7 +701,7 @@ export class ZonesComponent {
     this.planSuggestion.set(null);
   }
 
-  async toggleRecording(): Promise<void> {
+  async toggleRecording(target: RecordingTarget): Promise<void> {
     if (this.recording()) {
       this.mediaRecorder?.stop();
       return;
@@ -676,6 +725,7 @@ export class ZonesComponent {
       };
       this.mediaRecorder.start();
       this.recording.set(true);
+      this.recordingTarget.set(target);
     } catch {
       this.setFeedback('Mikrofon konnte nicht gestartet werden.', 'warning');
     }
@@ -779,7 +829,9 @@ export class ZonesComponent {
   }
 
   private async transcribeRecording(): Promise<void> {
+    const target = this.recordingTarget();
     this.recording.set(false);
+    this.recordingTarget.set(null);
     if (!this.audioChunks.length) {
       return;
     }
@@ -792,15 +844,32 @@ export class ZonesComponent {
       mime_type: blob.type || 'audio/webm',
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: ({ text }) => {
-        const current = this.form.controls.zone_profile_description.value.trim();
-        this.form.controls.zone_profile_description.setValue(current ? `${current}\n${text}` : text);
-        this.setFeedback('Sprachbeschreibung übernommen.');
+        this.applyTranscription(target, text);
+        this.setFeedback('Sprachtext übernommen.');
         this.assistantBusy.set(false);
       },
       error: (error) => {
         this.setFeedback(this.apiErrorMessage(error, 'Die Sprachaufnahme konnte nicht transkribiert werden.'), 'warning');
         this.assistantBusy.set(false);
       },
+    });
+  }
+
+  private applyTranscription(target: RecordingTarget | null, text: string): void {
+    if (target === 'adjustmentInstruction') {
+      const current = this.adjustmentInstruction().trim();
+      this.adjustmentInstruction.set(current ? `${current}\n${text}` : text);
+      return;
+    }
+    const current = this.form.controls.zone_profile_description.value.trim();
+    this.form.controls.zone_profile_description.setValue(current ? `${current}\n${text}` : text);
+  }
+
+  private clearZoneRouteParam(): void {
+    void this.router.navigate(['/areas'], {
+      queryParams: { zoneId: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
     });
   }
 
