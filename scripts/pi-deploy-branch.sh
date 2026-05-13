@@ -7,7 +7,7 @@ REMOTE="${SMARTGARDEN_REMOTE:-origin}"
 REPO_FULL_NAME="${SMARTGARDEN_REPO_FULL_NAME:-philippgri11/SmartGarden}"
 REQUIRE_CI="${REQUIRE_CI:-true}"
 CI_TIMEOUT_SECONDS="${CI_TIMEOUT_SECONDS:-1800}"
-KUBECTL="${KUBECTL:-sudo kubectl --request-timeout=60s}"
+KUBECTL="${KUBECTL:-sudo kubectl --request-timeout=300s}"
 BACKEND_IMAGE_REPOSITORY="${BACKEND_IMAGE_REPOSITORY:-ghcr.io/philippgri11/smartgarden-backend}"
 FRONTEND_IMAGE_REPOSITORY="${FRONTEND_IMAGE_REPOSITORY:-ghcr.io/philippgri11/smartgarden-frontend}"
 
@@ -30,10 +30,7 @@ git reset --hard "$REMOTE/$BRANCH"
 BACKEND_IMAGE="${BACKEND_IMAGE_REPOSITORY}:${SHA}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE_REPOSITORY}:${SHA}"
 
-KUBECTL="$KUBECTL" bash "$ROOT_DIR/scripts/deploy-pi.sh"
-$KUBECTL -n irrigation set image deployment/backend backend="$BACKEND_IMAGE"
-$KUBECTL -n irrigation set image deployment/scheduler scheduler="$BACKEND_IMAGE"
-$KUBECTL -n irrigation set image deployment/frontend frontend="$FRONTEND_IMAGE"
+KUBECTL="$KUBECTL" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" bash "$ROOT_DIR/scripts/deploy-pi.sh"
 $KUBECTL -n irrigation rollout status deployment/backend --timeout=180s
 $KUBECTL -n irrigation rollout status deployment/scheduler --timeout=180s
 $KUBECTL -n irrigation rollout status deployment/frontend --timeout=180s

@@ -12,7 +12,7 @@ sudo tee /etc/default/smartgarden-auto-deploy >/dev/null <<EOF
 SMARTGARDEN_REPO_DIR=$REPO_DIR
 SMARTGARDEN_AUTO_DEPLOY_BRANCH=$AUTO_BRANCH
 SMARTGARDEN_REPO_FULL_NAME=philippgri11/SmartGarden
-KUBECTL="sudo kubectl --request-timeout=60s"
+KUBECTL="sudo kubectl --request-timeout=300s"
 EOF
 
 sudo systemctl daemon-reload
