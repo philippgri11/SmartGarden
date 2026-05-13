@@ -191,12 +191,16 @@ const WEEKDAYS = [
           </select>
         </label>
 
-        <label class="field field-span-3">
+        <p class="muted field-span-6" *ngIf="!form.controls.weather_enabled.value">
+          Dieser feste Plan läuft unabhängig vom Wetter. Regen-Grenzen erscheinen erst, wenn du Wetter berücksichtigst.
+        </p>
+
+        <label class="field field-span-3" *ngIf="form.controls.weather_enabled.value">
           <span>Bei Regen Lauf überspringen ab (%)</span>
           <input type="number" formControlName="weather_probability_threshold" />
         </label>
 
-        <label class="field field-span-3">
+        <label class="field field-span-3" *ngIf="form.controls.weather_enabled.value">
           <span>Bei Regenmenge Lauf überspringen ab (mm)</span>
           <input type="number" formControlName="weather_precipitation_mm_threshold" />
         </label>

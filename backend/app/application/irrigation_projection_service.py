@@ -48,9 +48,10 @@ class IrrigationProjectionService:
             generated_at = generated_at.replace(tzinfo=UTC)
         days = max(1, min(days, 14))
         app_settings = self.weather.get_settings()
-        weather_summary = self.weather.try_fetch_current_summary(app_settings=app_settings) if app_settings.weather_enabled else None
-        weather_status = "fresh" if weather_summary else ("unavailable" if app_settings.weather_enabled else "unavailable")
-        candidates = self._manual_rule_candidates(now=generated_at, days=days)
+        weather_lookup = self.weather.try_fetch_current_lookup(app_settings=app_settings) if app_settings.weather_enabled else None
+        weather_summary = weather_lookup.summary if weather_lookup else None
+        weather_status = weather_lookup.source_status if weather_lookup else "unavailable"
+        candidates = self._manual_rule_candidates(now=generated_at, days=days, app_settings=app_settings)
         candidates.extend(self._adaptive_rule_candidates(now=generated_at, days=days, weather_summary=weather_summary))
         items = self._sequence_candidates(candidates)
         return IrrigationProjectionResponse(
@@ -99,7 +100,7 @@ class IrrigationProjectionService:
         ]
         return matching[0].planned_start if matching else candidate_start
 
-    def _manual_rule_candidates(self, *, now: datetime, days: int) -> list[_Candidate]:
+    def _manual_rule_candidates(self, *, now: datetime, days: int, app_settings: orm.AppSetting) -> list[_Candidate]:
         zones_by_id = {zone.id: zone for zone in self.zones.list()}
         candidates: list[_Candidate] = []
         for schedule in self.schedules.list_active():
@@ -116,7 +117,10 @@ class IrrigationProjectionService:
                         original_start=start,
                         duration_minutes=min(schedule.duration_minutes, zone.max_duration_minutes),
                         reason="Manuell angelegte Regel.",
-                        weather_summary=self._weather_text(schedule.weather_enabled or zone.weather_enabled),
+                        weather_summary=self._weather_text(
+                            enabled=app_settings.weather_enabled and (schedule.weather_enabled or zone.weather_enabled),
+                            source_status=None,
+                        ),
                     )
                 )
         return candidates
@@ -162,7 +166,7 @@ class IrrigationProjectionService:
                         duration_minutes=duration,
                         reason=decision.reason,
                         status=status,
-                        weather_summary=self._weather_text(True),
+                        weather_summary=self._weather_text(True, source_status="fresh" if weather_summary else "unavailable"),
                     )
                 )
                 if decision.should_plan:
@@ -258,5 +262,11 @@ class IrrigationProjectionService:
         )
 
     @staticmethod
-    def _weather_text(enabled: bool) -> str:
-        return "Wetter und Zonenprofil werden berücksichtigt." if enabled else "Wetter ist für diese Regel nicht aktiv."
+    def _weather_text(enabled: bool, *, source_status: str | None) -> str:
+        if not enabled:
+            return "Wetter ist für diese Regel nicht aktiv."
+        if source_status == "unavailable":
+            return "Wetterdaten fehlen; die Planung nutzt gespeicherte Regeln und Zonenprofil als Schätzung."
+        if source_status == "stale":
+            return "Wetterdaten sind älter; die Planung nutzt sie vorsichtig mit dem Zonenprofil."
+        return "Wetter und Zonenprofil werden berücksichtigt."

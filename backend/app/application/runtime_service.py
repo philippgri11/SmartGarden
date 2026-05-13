@@ -44,8 +44,8 @@ class RuntimeService:
     ) -> list[dict]:
         current_time = now or datetime.now(UTC)
         current_settings = app_settings or self.weather.get_settings()
-        current_forecast = (
-            self.weather.try_fetch_current_summary(app_settings=current_settings)
+        current_forecast_lookup = (
+            self.weather.try_fetch_current_lookup(app_settings=current_settings)
             if current_settings.weather_enabled
             else None
         )
@@ -64,7 +64,7 @@ class RuntimeService:
                 zone_runs=runs_by_zone.get(zone.id, []),
                 app_settings=current_settings,
                 now=current_time,
-                current_forecast=current_forecast,
+                current_forecast_lookup=current_forecast_lookup,
                 next_watering_at=next_by_zone.get(zone.id),
             )
             for zone in zones
@@ -85,7 +85,7 @@ class RuntimeService:
         zone_runs: list[orm.WateringRun],
         app_settings: orm.AppSetting,
         now: datetime,
-        current_forecast,
+        current_forecast_lookup,
         next_watering_at: datetime | None,
     ) -> dict:
         current_run = next((run for run in zone_runs if run.status in {RunStatus.PLANNED.value, RunStatus.RUNNING.value}), None)
@@ -131,7 +131,10 @@ class RuntimeService:
                 weather_enabled=weather_enabled_effective,
                 probability_threshold=effective_probability_threshold,
                 precipitation_threshold_mm=effective_precipitation_threshold,
-                forecast_summary=current_forecast,
+                forecast_summary=current_forecast_lookup.summary if current_forecast_lookup else None,
+                checked_at=current_forecast_lookup.checked_at if current_forecast_lookup else None,
+                source_status=current_forecast_lookup.source_status if current_forecast_lookup else None,
+                api_error=current_forecast_lookup.error if current_forecast_lookup else None,
             )
 
         current_run_remaining_seconds = self._current_run_remaining_seconds(
@@ -224,8 +227,15 @@ class RuntimeService:
             current_water_status = "wird vorbereitet"
         else:
             status = "ok"
-            headline = "Alles in Ordnung"
-            detail = "Das System ist bereit für die nächste Bewässerung."
+            weather_overview = self._build_summary_weather_overview(app_settings=app_settings, areas=areas)
+            if weather_overview.get("decision") == "error":
+                status = "attention"
+                headline = "Betriebsbereit mit Wetterwarnung"
+                detail = weather_overview.get("reason_human") or "Wetterdaten konnten nicht geprüft werden."
+            else:
+                status = "ok"
+                headline = "Alles in Ordnung"
+                detail = "Das System ist bereit für die nächste Bewässerung."
             current_water_status = "aus"
 
         weather_overview = self._build_summary_weather_overview(app_settings=app_settings, areas=areas)

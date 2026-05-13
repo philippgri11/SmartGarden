@@ -173,6 +173,9 @@ type AssistantStep = 'describe' | 'profile' | 'automation';
           </ng-container>
 
           <ng-container *ngIf="assistantStep() === 'profile'">
+          <p class="notice warning" *ngIf="!hasRealProfile() && !profileSuggestion()">
+            Noch kein echter Profilvorschlag vorhanden. Beschreibe zuerst die Zone, damit Standardwerte nicht wie gespeicherte Werte wirken.
+          </p>
           <label class="field" *ngIf="selectedArea">
             <span>Parameter per KI anpassen</span>
             <div class="voice-input-shell">
@@ -213,7 +216,7 @@ type AssistantStep = 'describe' | 'profile' | 'automation';
             </div>
           </div>
 
-          <div class="zone-profile-summary">
+          <div class="zone-profile-summary" *ngIf="hasRealProfile() || profileSuggestion()">
             <div>
               <span>Pflanzen</span>
               <strong>{{ PLANT_TYPE_LABELS[profileForm.controls.plantType.value] }}</strong>
@@ -494,7 +497,7 @@ type AssistantStep = 'describe' | 'profile' | 'automation';
       <p class="notice" [class.success]="feedbackKind() === 'success'" [class.warning]="feedbackKind() === 'warning'" *ngIf="feedback()">{{ feedback() }}</p>
     </section>
 
-    <section class="panel" *ngIf="vm$ | async as vm">
+    <section class="panel" *ngIf="!showForm() && (vm$ | async) as vm">
       <div class="section-head">
         <div>
           <h3>Bereichsübersicht</h3>
@@ -544,6 +547,7 @@ export class ZonesComponent {
   readonly adjustmentInstruction = signal('');
   readonly profileSuggestion = signal<ZoneProfileSuggestionResponse | null>(null);
   readonly planSuggestion = signal<ZoneAdaptivePlanResponse | null>(null);
+  readonly profileReady = signal(false);
   readonly minutes = signal<Record<number, number>>({});
   readonly showForm = signal(false);
   readonly areaEditing = signal(false);
@@ -695,8 +699,9 @@ export class ZonesComponent {
     this.patchPlan(area.scheduling_mode ?? 'static', area.adaptive_irrigation_plan ?? null);
     this.profileSuggestion.set(null);
     this.planSuggestion.set(null);
+    this.profileReady.set(this.hasAreaProfile(area));
     this.adjustmentInstruction.set('');
-    this.assistantStep.set('profile');
+    this.assistantStep.set(this.hasAreaProfile(area) ? 'profile' : 'describe');
     requestAnimationFrame(() => {
       this.areaFormPanel?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -726,6 +731,7 @@ export class ZonesComponent {
     this.patchPlan('static', null);
     this.profileSuggestion.set(null);
     this.planSuggestion.set(null);
+    this.profileReady.set(false);
     this.adjustmentInstruction.set('');
     this.assistantStep.set('describe');
     if (closeForm) {
@@ -787,6 +793,7 @@ export class ZonesComponent {
     }
     this.patchProfile(suggestion.profile);
     this.profileSuggestion.set(null);
+    this.profileReady.set(true);
     this.assistantStep.set('automation');
     this.setFeedback('Vorschlag übernommen. Speichere den Bereich, damit die Werte aktiv werden.');
   }
@@ -984,7 +991,15 @@ export class ZonesComponent {
   }
 
   hasProfileInput(): boolean {
-    return this.form.controls.zone_profile_description.value.trim().length > 0 || !!this.selectedArea;
+    return this.form.controls.zone_profile_description.value.trim().length > 0 || this.hasRealProfile() || !!this.profileSuggestion();
+  }
+
+  hasRealProfile(): boolean {
+    return this.profileReady() || this.hasAreaProfile(this.selectedArea);
+  }
+
+  private hasAreaProfile(area: Zone | null): boolean {
+    return !!(area?.irrigation_profile || area?.zone_profile_description?.trim());
   }
 
   private applyTranscription(target: RecordingTarget | null, text: string): void {

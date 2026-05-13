@@ -21,6 +21,9 @@ import { IrrigationProjectionItem } from '../../core/api.models';
         <div>
           <h3>Nächste Woche</h3>
           <p class="muted">{{ sourceText(vm.weather_source_status) }} · Erstellt {{ formatDateTime(vm.generated_at) }}</p>
+          <p class="notice warning" *ngIf="vm.weather_source_status === 'unavailable'">
+            Wetterdaten fehlen. Die Vorschau nutzt gespeicherte Regeln und Zonenprofile; reale Regenprognosen konnten nicht eingerechnet werden.
+          </p>
         </div>
         <button class="button secondary" type="button" (click)="reload()">Aktualisieren</button>
       </div>
@@ -51,6 +54,7 @@ import { IrrigationProjectionItem } from '../../core/api.models';
               <th>Regel</th>
               <th>Dauer</th>
               <th>Status</th>
+              <th>Wetter</th>
               <th>Warum</th>
             </tr>
           </thead>
@@ -66,7 +70,8 @@ import { IrrigationProjectionItem } from '../../core/api.models';
               <td>{{ sourceLabel(item.source) }}</td>
               <td>{{ item.duration_minutes }} min</td>
               <td><span class="status-chip" [class.status-paused]="item.status !== 'planned'">{{ statusLabel(item.status) }}</span></td>
-              <td>{{ item.reason }}</td>
+              <td>{{ item.weather_summary ?? 'Keine Wetterangabe' }}</td>
+              <td [title]="item.reason">{{ userReason(item) }}</td>
             </tr>
           </tbody>
         </table>
@@ -120,6 +125,19 @@ export class PlanningComponent {
       return 'Ausgesetzt';
     }
     return 'Blockiert';
+  }
+
+  userReason(item: IrrigationProjectionItem): string {
+    if (item.source === 'manual_rule') {
+      return item.adjusted_for_sequence
+        ? 'Manuelle Regel, nach vorherigem Lauf einsortiert.'
+        : 'Manuell angelegte Regel.';
+    }
+    if (item.status !== 'planned') {
+      return 'Automatische Regel lässt diesen Lauf aus.';
+    }
+    const moved = item.adjusted_for_sequence ? ' Start wurde verschoben, damit keine zwei Bereiche gleichzeitig laufen.' : '';
+    return `KI-Regel plant ${item.duration_minutes} Minuten im passenden Zeitfenster.${moved}`;
   }
 
   dayLabel(value: string): string {

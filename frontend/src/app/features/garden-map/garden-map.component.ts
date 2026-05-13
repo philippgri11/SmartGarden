@@ -106,6 +106,7 @@ type LeafletLayer = L.Layer & { toGeoJSON: () => GeoJSON.Feature<GeoJSON.Geometr
                 <option *ngFor="let zone of vm.areas" [ngValue]="zone.id">{{ zone.name }}</option>
               </select>
             </label>
+            <p class="muted">Neue Flächen werden einem bestehenden Bereich zugeordnet. Bestehende Flächen bearbeitest du über „Bearbeiten“ direkt auf der Karte.</p>
             <label class="field">
               <span>Name der Fläche</span>
               <input [formControl]="shapeDraftForm.controls.name" />
@@ -325,6 +326,8 @@ export class GardenMapComponent implements OnInit {
       );
       if (!this.shapeDraftForm.value.zone_id && runtimeVm.areas.length) {
         this.shapeDraftForm.patchValue({ zone_id: runtimeVm.areas[0].id });
+        this.autoShapeName = this.defaultShapeName(runtimeVm.areas[0].id);
+        this.shapeDraftForm.patchValue({ name: this.autoShapeName }, { emitEvent: false });
       }
       return { ...runtimeVm, maps, mapView: this.currentMapView() };
     })
@@ -712,6 +715,14 @@ export class GardenMapComponent implements OnInit {
   }
 
   displayShapeName(shape: ZoneMapShapeView): string {
-    return shape.name?.trim() || this.defaultShapeName(shape.zone_id);
+    const zoneName = shape.zone_status.name || this.defaultShapeName(shape.zone_id);
+    const shapeName = shape.name?.trim();
+    if (!shapeName) {
+      return zoneName;
+    }
+    if (shapeName.toLocaleLowerCase('de-DE') === 'terasse' && zoneName.toLocaleLowerCase('de-DE') === 'terrasse') {
+      return zoneName;
+    }
+    return shapeName;
   }
 }

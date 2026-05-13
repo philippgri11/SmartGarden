@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, time
 
 from app.application.irrigation_projection_service import IrrigationProjectionService
+from app.application.weather_service import ForecastLookup
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.watering_service import WateringService
 from app.config import Settings
@@ -113,7 +114,10 @@ def test_projection_sequences_manual_before_adaptive(db_session, monkeypatch) ->
     )
     db_session.commit()
 
-    monkeypatch.setattr("app.application.weather_service.WeatherService.try_fetch_current_summary", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.application.weather_service.WeatherService.try_fetch_current_lookup",
+        lambda *args, **kwargs: ForecastLookup(summary=None, source_status="unavailable", checked_at=None, error="429"),
+    )
     projection = IrrigationProjectionService(db_session, TEST_SETTINGS).build_projection(
         days=1,
         now=datetime(2026, 5, 13, 5, 0, tzinfo=UTC),
@@ -124,10 +128,15 @@ def test_projection_sequences_manual_before_adaptive(db_session, monkeypatch) ->
     assert first_two[0].planned_start.time() == time(5, 30)
     assert first_two[1].planned_start.time() == time(5, 42)
     assert first_two[1].adjusted_for_sequence is True
+    assert projection.weather_source_status == "unavailable"
+    assert "Wetterdaten fehlen" in (first_two[1].weather_summary or "")
 
 
 def test_projection_endpoint_returns_backend_plan(client, monkeypatch) -> None:
-    monkeypatch.setattr("app.application.weather_service.WeatherService.try_fetch_current_summary", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.application.weather_service.WeatherService.try_fetch_current_lookup",
+        lambda *args, **kwargs: ForecastLookup(summary=None, source_status="unavailable", checked_at=None, error="429"),
+    )
     zone_response = client.post(
         "/api/zones",
         json={

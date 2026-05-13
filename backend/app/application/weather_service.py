@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -10,6 +11,20 @@ from app.domain.policies import WeatherPolicyInput, WeatherPolicyResult, evaluat
 from app.infrastructure.db.orm import AppSetting, Schedule, WeatherDecision, WeatherForecastCache, Zone
 from app.infrastructure.db.repositories import AppSettingRepository
 from app.infrastructure.weather.open_meteo_client import OpenMeteoClient, WeatherForecastSummary
+
+
+class CachedWeatherUnavailableError(RuntimeError):
+    def __init__(self, message: str, *, checked_at: datetime | None = None):
+        super().__init__(message)
+        self.checked_at = checked_at
+
+
+@dataclass(slots=True)
+class ForecastLookup:
+    summary: WeatherForecastSummary | None
+    source_status: str
+    checked_at: datetime | None
+    error: str | None = None
 
 
 class WeatherService:
@@ -105,27 +120,75 @@ class WeatherService:
             return result, None, app_settings
 
     def try_fetch_current_summary(self, *, app_settings: AppSetting) -> WeatherForecastSummary | None:
+        return self.try_fetch_current_lookup(app_settings=app_settings).summary
+
+    def try_fetch_current_lookup(self, *, app_settings: AppSetting) -> ForecastLookup:
         try:
-            return self.fetch_forecast_cached(
+            summary = self.fetch_forecast_cached(
                 latitude=app_settings.latitude,
                 longitude=app_settings.longitude,
                 hours=app_settings.weather_window_hours,
             )
-        except Exception:  # noqa: BLE001
-            return None
+            checked_at = self._cached_checked_at(
+                latitude=app_settings.latitude,
+                longitude=app_settings.longitude,
+                hours=app_settings.weather_window_hours,
+            )
+            source_status = self._source_status(checked_at=checked_at, weather_enabled=app_settings.weather_enabled)
+            return ForecastLookup(summary=summary, source_status=source_status, checked_at=checked_at)
+        except CachedWeatherUnavailableError as exc:
+            return ForecastLookup(summary=None, source_status="unavailable", checked_at=exc.checked_at, error=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            checked_at = self._cached_checked_at(
+                latitude=app_settings.latitude,
+                longitude=app_settings.longitude,
+                hours=app_settings.weather_window_hours,
+            )
+            return ForecastLookup(summary=None, source_status="unavailable", checked_at=checked_at, error=str(exc))
 
     def fetch_forecast_cached(self, *, latitude: float, longitude: float, hours: int) -> WeatherForecastSummary:
         key = self._cache_key(latitude=latitude, longitude=longitude, hours=hours)
         now = datetime.now(UTC)
         cached = self.session.scalar(select(WeatherForecastCache).where(WeatherForecastCache.cache_key == key))
         if cached and self._as_aware(cached.fetched_at) >= now - timedelta(minutes=self.settings.weather_cache_ttl_minutes):
+            if self._is_error_cache(cached.summary_json):
+                raise CachedWeatherUnavailableError(
+                    cached.summary_json.get("error") or "weather api error cached",
+                    checked_at=self._as_aware(cached.fetched_at),
+                )
+            return self._summary_from_cache(cached.summary_json)
+        if (
+            cached
+            and self._recent_failed_attempt(cached.summary_json, now=now)
+            and self._as_aware(cached.fetched_at) >= now - timedelta(hours=self.settings.weather_cache_stale_fallback_hours)
+            and not self._is_error_cache(cached.summary_json)
+        ):
             return self._summary_from_cache(cached.summary_json)
 
         try:
             summary = self.client.fetch_forecast(latitude=latitude, longitude=longitude, hours=hours)
-        except Exception:
-            if cached and self._as_aware(cached.fetched_at) >= now - timedelta(hours=self.settings.weather_cache_stale_fallback_hours):
+        except Exception as exc:
+            if (
+                cached
+                and not self._is_error_cache(cached.summary_json)
+                and self._as_aware(cached.fetched_at) >= now - timedelta(hours=self.settings.weather_cache_stale_fallback_hours)
+            ):
+                cached.summary_json = {
+                    **cached.summary_json,
+                    "_last_error": str(exc),
+                    "_last_attempt_at": now.isoformat(),
+                }
+                self.session.flush()
                 return self._summary_from_cache(cached.summary_json)
+            self._store_forecast_error(
+                cached=cached,
+                key=key,
+                latitude=latitude,
+                longitude=longitude,
+                hours=hours,
+                error=str(exc),
+                fetched_at=now,
+            )
             raise
 
         payload = self._summary_to_cache(summary)
@@ -157,6 +220,9 @@ class WeatherService:
         probability_threshold: int,
         precipitation_threshold_mm: float,
         forecast_summary: WeatherForecastSummary | None,
+        checked_at: datetime | None = None,
+        source_status: str | None = None,
+        api_error: str | None = None,
     ) -> dict:
         policy = evaluate_weather_policy(
             WeatherPolicyInput(
@@ -166,13 +232,13 @@ class WeatherService:
                 probability_max=forecast_summary.probability_max if forecast_summary else None,
                 precipitation_sum_mm=forecast_summary.precipitation_sum_mm if forecast_summary else None,
                 fail_mode=app_settings.weather_fail_mode,
-                api_error=None if forecast_summary else "live forecast unavailable",
+                api_error=None if forecast_summary else api_error or "live forecast unavailable",
             )
         )
-        checked_at = datetime.now(UTC)
-        raw_reason = policy.reason if forecast_summary else "weather api error: live forecast unavailable"
+        checked_at = checked_at or datetime.now(UTC)
+        raw_reason = policy.reason if forecast_summary else f"weather api error: {api_error or 'live forecast unavailable'}"
         display_decision = policy.decision if forecast_summary else "error"
-        return self.build_overview(
+        overview = self.build_overview(
             app_settings=app_settings,
             weather_enabled=weather_enabled,
             decision=display_decision,
@@ -190,6 +256,9 @@ class WeatherService:
             precipitation_next_24h_mm=forecast_summary.precipitation_next_24h_mm if forecast_summary else None,
             cloud_cover_avg_pct=forecast_summary.cloud_cover_avg_pct if forecast_summary else None,
         )
+        if source_status:
+            overview["source_status"] = source_status
+        return overview
 
     def humanize_reason(
         self,
@@ -249,6 +318,57 @@ class WeatherService:
             "cloud_cover_avg_pct": summary.cloud_cover_avg_pct,
             "raw_response": summary.raw_response,
         }
+
+    def _store_forecast_error(
+        self,
+        *,
+        cached: WeatherForecastCache | None,
+        key: str,
+        latitude: float,
+        longitude: float,
+        hours: int,
+        error: str,
+        fetched_at: datetime,
+    ) -> None:
+        payload = {"source_status": "unavailable", "error": error}
+        if cached:
+            cached.summary_json = payload
+            cached.fetched_at = fetched_at
+            cached.latitude = latitude
+            cached.longitude = longitude
+            cached.forecast_window_hours = hours
+        else:
+            self.session.add(
+                WeatherForecastCache(
+                    cache_key=key,
+                    latitude=latitude,
+                    longitude=longitude,
+                    forecast_window_hours=hours,
+                    summary_json=payload,
+                    fetched_at=fetched_at,
+                )
+            )
+        self.session.flush()
+
+    def _cached_checked_at(self, *, latitude: float, longitude: float, hours: int) -> datetime | None:
+        key = self._cache_key(latitude=latitude, longitude=longitude, hours=hours)
+        cached = self.session.scalar(select(WeatherForecastCache).where(WeatherForecastCache.cache_key == key))
+        return self._as_aware(cached.fetched_at) if cached else None
+
+    @staticmethod
+    def _is_error_cache(payload: dict) -> bool:
+        return payload.get("source_status") == "unavailable" and "error" in payload
+
+    def _recent_failed_attempt(self, payload: dict, *, now: datetime) -> bool:
+        raw_attempt = payload.get("_last_attempt_at")
+        if not raw_attempt:
+            return False
+        try:
+            attempted_at = datetime.fromisoformat(str(raw_attempt))
+        except ValueError:
+            return False
+        attempted_at = self._as_aware(attempted_at)
+        return attempted_at >= now - timedelta(minutes=self.settings.weather_cache_ttl_minutes)
 
     @staticmethod
     def _summary_from_cache(payload: dict) -> WeatherForecastSummary:

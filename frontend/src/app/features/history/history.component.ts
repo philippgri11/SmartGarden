@@ -162,9 +162,21 @@ export class HistoryComponent {
       minutesThisWeek: thisWeek
         .filter((run) => run.status === 'completed')
         .reduce((sum, run) => sum + run.requested_duration_minutes, 0),
-      weatherSkipped: thisWeek.filter((run) => run.weather_decisions.some((decision) => decision.decision === 'skip')).length,
+      weatherSkipped: thisWeek.filter((run) => this.isWeatherSkipped(run)).length,
       failed: thisWeek.filter((run) => run.status === 'failed').length,
     };
+  }
+
+  private isWeatherSkipped(run: WateringRun): boolean {
+    if (run.status !== 'skipped') {
+      return false;
+    }
+    const decision = this.weatherDecisionFor(run);
+    if (decision?.decision === 'skip' || decision?.decision === 'error') {
+      return true;
+    }
+    const reason = `${run.reason ?? ''} ${decision?.reason ?? ''} ${decision?.reason_human ?? ''}`.toLowerCase();
+    return reason.includes('wetter') || reason.includes('regen') || reason.includes('adaptive irrigation');
   }
 
   weatherDecisionFor(run: WateringRun) {

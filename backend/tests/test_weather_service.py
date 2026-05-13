@@ -1,7 +1,8 @@
 import httpx
+import pytest
 from datetime import UTC, datetime, timedelta
 
-from app.application.weather_service import WeatherService
+from app.application.weather_service import CachedWeatherUnavailableError, WeatherService
 from app.infrastructure.db import orm
 from app.infrastructure.weather.open_meteo_client import WeatherForecastSummary
 
@@ -126,6 +127,7 @@ def test_forecast_cache_reuses_fresh_response(db_session, monkeypatch) -> None:
 
 def test_forecast_cache_falls_back_to_stale_on_api_error(db_session, monkeypatch) -> None:
     service = WeatherService(db_session, TEST_SETTINGS)
+    calls = 0
 
     monkeypatch.setattr(
         service.client,
@@ -149,13 +151,39 @@ def test_forecast_cache_falls_back_to_stale_on_api_error(db_session, monkeypatch
     db_session.commit()
 
     def fail_fetch(*, latitude: float, longitude: float, hours: int):
+        nonlocal calls
+        calls += 1
         raise httpx.HTTPStatusError("429", request=httpx.Request("GET", "https://example.test"), response=httpx.Response(429))
 
     monkeypatch.setattr(service.client, "fetch_forecast", fail_fetch)
     cached = service.fetch_forecast_cached(latitude=52.52, longitude=13.405, hours=6)
+    cached_again = service.fetch_forecast_cached(latitude=52.52, longitude=13.405, hours=6)
 
     assert cached.probability_max == 33
     assert cached.raw_response == {"cached": True}
+    assert cached_again.raw_response == {"cached": True}
+    assert calls == 1
+
+
+def test_forecast_cache_reuses_recent_api_error_without_refetching(db_session, monkeypatch) -> None:
+    service = WeatherService(db_session, TEST_SETTINGS)
+    calls = 0
+
+    def fail_fetch(*, latitude: float, longitude: float, hours: int):
+        nonlocal calls
+        calls += 1
+        raise httpx.HTTPStatusError("429", request=httpx.Request("GET", "https://example.test"), response=httpx.Response(429))
+
+    monkeypatch.setattr(service.client, "fetch_forecast", fail_fetch)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        service.fetch_forecast_cached(latitude=52.52, longitude=13.405, hours=6)
+    with pytest.raises(CachedWeatherUnavailableError):
+        service.fetch_forecast_cached(latitude=52.52, longitude=13.405, hours=6)
+
+    assert calls == 1
+    cached_row = db_session.query(orm.WeatherForecastCache).one()
+    assert cached_row.summary_json["source_status"] == "unavailable"
 
 
 def test_live_overview_shows_api_error_when_forecast_missing(db_session) -> None:
