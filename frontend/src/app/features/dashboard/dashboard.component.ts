@@ -28,6 +28,18 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
       <p>Alles Wichtige auf einen Blick: Zustand, nächste Bewässerung und schnelle Eingriffe.</p>
     </section>
 
+    <section class="gift-hero" aria-label="Vatertagsgeschenk">
+      <div class="gift-hero-copy">
+        <span class="gift-kicker">Dein Geschenk</span>
+        <h2>Alles Gute zum Vatertag</h2>
+        <p>Heute läuft die Bewässerung mit Extra-Hopfen: Smart Garden kümmert sich um die Pflanzen, das Bier bleibt für dich.</p>
+      </div>
+      <div class="gift-hero-media">
+        <img src="fathers-day-beer-irrigation.gif" alt="Vatertagsgeschenk: Bierfass-Bewaesserung im Garten" />
+        <span>Vatertags-Modus aktiviert</span>
+      </div>
+    </section>
+
     <ng-container *ngIf="vm$ | async as vm">
       <app-winter-mode-banner [active]="vm.settings.winter_mode_active" (disable)="setWinterMode(false)" />
       <app-system-status-card *ngIf="vm.summary" [summary]="vm.summary" [expertMode]="expertMode()" />

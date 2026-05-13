@@ -155,6 +155,84 @@ button {
   color: var(--muted);
 }
 
+.gift-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 20px;
+  align-items: stretch;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid rgba(212, 141, 63, 0.34);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(255, 246, 220, 0.94), rgba(238, 248, 232, 0.92)),
+    var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+
+.gift-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 28px;
+}
+
+.gift-kicker {
+  width: fit-content;
+  margin-bottom: 12px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(212, 141, 63, 0.18);
+  color: #835114;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gift-hero h2 {
+  margin: 0;
+  max-width: 10ch;
+  font-size: clamp(2rem, 4vw, 4.4rem);
+  line-height: 0.98;
+}
+
+.gift-hero p {
+  max-width: 44rem;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.gift-hero-media {
+  position: relative;
+  min-height: 280px;
+  overflow: hidden;
+}
+
+.gift-hero-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
+  object-fit: cover;
+}
+
+.gift-hero-media span {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  max-width: calc(100% - 32px);
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--primary-strong);
+  font-weight: 700;
+  box-shadow: 0 12px 30px rgba(24, 48, 31, 0.14);
+}
+
 .panel,
 .card,
 .system-status-card,
@@ -1354,6 +1432,18 @@ app-expert-section {
   .header-actions > .emergency-stop {
     display: none;
   }
+
+  .gift-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .gift-hero-copy {
+    padding: 22px 22px 0;
+  }
+
+  .gift-hero h2 {
+    max-width: 12ch;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1460,6 +1550,35 @@ app-expert-section {
 
   .page-title p {
     display: none;
+  }
+
+  .gift-hero {
+    gap: 12px;
+    border-radius: 24px;
+  }
+
+  .gift-hero-copy {
+    padding: 18px 18px 0;
+  }
+
+  .gift-hero h2 {
+    font-size: 2.2rem;
+  }
+
+  .gift-hero p {
+    font-size: 0.96rem;
+  }
+
+  .gift-hero-media,
+  .gift-hero-media img {
+    min-height: 220px;
+  }
+
+  .gift-hero-media span {
+    left: 12px;
+    right: auto;
+    bottom: 12px;
+    max-width: calc(100% - 24px);
   }
 
   .panel,
