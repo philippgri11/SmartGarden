@@ -92,6 +92,7 @@ type LeafletLayer = L.Layer & { toGeoJSON: () => GeoJSON.Feature<GeoJSON.Geometr
 
           <section class="panel">
             <h3>Werkzeuge</h3>
+            <p class="muted">Wähle zuerst einen bestehenden Bereich aus. Danach zeichnest du eine neue Fläche auf der Karte oder bearbeitest vorhandene Flächen direkt im Kartenwerkzeug.</p>
             <div class="toolbar wrap">
               <button class="button secondary" type="button" (click)="triggerLeafletAction('.leaflet-draw-draw-polygon')">Fläche zeichnen</button>
               <button class="button secondary" type="button" (click)="triggerLeafletAction('.leaflet-draw-edit-edit')">Bearbeiten</button>
@@ -99,7 +100,7 @@ type LeafletLayer = L.Layer & { toGeoJSON: () => GeoJSON.Feature<GeoJSON.Geometr
               <button class="button secondary" type="button" (click)="reloadSelectedMap()">Rückgängig</button>
             </div>
             <label class="field">
-              <span>Bereich für neue Fläche</span>
+              <span>Bestehenden Bereich für neue Fläche wählen</span>
               <select [formControl]="shapeDraftForm.controls.zone_id">
                 <option [ngValue]="null">Bitte Bereich wählen</option>
                 <option *ngFor="let zone of vm.areas" [ngValue]="zone.id">{{ zone.name }}</option>
@@ -229,7 +230,7 @@ export class GardenMapComponent implements OnInit {
   private readonly reload$ = new Subject<void>();
 
   readonly expertMode = computed(() => this.preferences.expertMode());
-  readonly showMapEditor = signal(true);
+  readonly showMapEditor = signal(false);
   readonly showMapDetails = signal(true);
   readonly showMapLegend = signal(true);
   readonly showMobileMapTools = signal(false);
@@ -243,6 +244,7 @@ export class GardenMapComponent implements OnInit {
   readonly shapeError = signal('');
   readonly shapeMinutes = signal<Record<number, number>>({});
   readonly areaNamesById = signal<Record<number, string>>({});
+  private autoShapeName = '';
 
   private mapSurface?: ElementRef<HTMLDivElement>;
   private map?: L.Map;
@@ -338,11 +340,12 @@ export class GardenMapComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((zoneId) => {
         const currentName = this.shapeDraftForm.controls.name.value?.trim() ?? '';
-        if (currentName.length) {
+        if (currentName.length && currentName !== this.autoShapeName) {
           return;
         }
+        this.autoShapeName = this.defaultShapeName(zoneId);
         this.shapeDraftForm.patchValue(
-          { name: this.defaultShapeName(zoneId) },
+          { name: this.autoShapeName },
           { emitEvent: false }
         );
       });
@@ -537,7 +540,10 @@ export class GardenMapComponent implements OnInit {
         className: 'leaflet-tooltip-own',
         opacity: 0.95,
       });
-      layer.on('click', () => this.selectedShape.set(shape));
+      layer.on('click', () => {
+        this.selectedShape.set(shape);
+        this.showMapDetails.set(true);
+      });
       if (shape.id === nextSelectedId) {
         this.selectedShape.set(shape);
       }
@@ -604,7 +610,8 @@ export class GardenMapComponent implements OnInit {
       next: () => {
         this.shapeFeedback.set('Fläche gespeichert.');
         this.shapeError.set('');
-        this.shapeDraftForm.patchValue({ name: this.defaultShapeName(this.shapeDraftForm.value.zone_id) });
+        this.autoShapeName = this.defaultShapeName(this.shapeDraftForm.value.zone_id);
+        this.shapeDraftForm.patchValue({ name: this.autoShapeName });
         this.reloadSelectedMap();
       },
       error: (error) => {

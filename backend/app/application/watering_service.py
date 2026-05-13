@@ -8,10 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.application.gpio_state_service import GpioStateService
+from app.application.schemas import ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import Settings
+from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX
 from app.domain.models import RunStatus, TriggerType, WeatherDecisionKind
 from app.domain.policies import enforce_max_duration, should_finish_run
+from app.domain.zone_irrigation import ZoneWeatherFacts, build_zone_irrigation_recommendation
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import WateringRunRepository, ZoneRepository
 from app.infrastructure.gpio.base import GpioAdapter
@@ -200,14 +203,19 @@ class WateringService:
             .order_by(orm.WateringRun.created_at.asc())
             .all()
         )
+        now = datetime.now(UTC)
         for run in planned_runs:
+            if run.scheduled_for and run.scheduled_time:
+                scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=UTC)
+                if scheduled_at > now:
+                    continue
             zone = self.zones.get(run.zone_id)
             if not zone or not zone.active:
                 run.status = RunStatus.SKIPPED.value
                 run.reason = "zone inactive or missing"
-                run.finished_at = datetime.now(UTC)
+                run.finished_at = now
                 continue
-            if len(currently_running_zone_ids) >= self.settings.max_global_concurrent_runs:
+            if currently_running_zone_ids or len(currently_running_zone_ids) >= self.settings.max_global_concurrent_runs:
                 break
             if run.zone_id in currently_running_zone_ids:
                 continue
@@ -375,8 +383,51 @@ class WateringService:
             run.finished_at = datetime.now(UTC)
             run.reason = "zone missing"
             return False
+        if run.trigger_type == TriggerType.MANUAL.value:
+            self.gpio.activate_zone(zone)
+            self.gpio_state.record_state(zone_id=zone.id, state=True, source="scheduler", reason="manual watering run started")
+            run.status = RunStatus.RUNNING.value
+            run.started_at = datetime.now(UTC)
+            run.reason = run.reason or "Manueller Start: Laufzeit wurde unverändert vom Benutzer übernommen."
+            return True
         schedule = self.session.get(orm.Schedule, run.schedule_id) if run.schedule_id else None
+        is_adaptive_run = bool(run.reason and run.reason.startswith(ADAPTIVE_REASON_PREFIX))
         weather_result, summary, app_settings = self.weather.evaluate(zone=zone, schedule=schedule)
+        recommendation = None
+        if summary and zone.irrigation_profile_json:
+            profile = ZoneIrrigationProfile.model_validate(zone.irrigation_profile_json)
+            recommendation = build_zone_irrigation_recommendation(
+                profile=profile,
+                weather=ZoneWeatherFacts(
+                    temperature_max_c=summary.temperature_max_24h_c,
+                    rain_last_24h_mm=summary.precipitation_last_24h_mm,
+                    rain_next_24h_mm=summary.precipitation_next_24h_mm,
+                    cloud_cover_avg_pct=summary.cloud_cover_avg_pct,
+                ),
+                scheduled_duration_minutes=run.requested_duration_minutes,
+                max_duration_minutes=zone.max_duration_minutes,
+            )
+            if weather_result.decision == WeatherDecisionKind.SKIP and recommendation.decision == "allow":
+                weather_result.decision = WeatherDecisionKind.ALLOW
+                weather_result.reason = "zone profile overrides rain skip: " + recommendation.explanation
+            elif weather_result.decision == WeatherDecisionKind.ALLOW and recommendation.decision == "skip":
+                weather_result.decision = WeatherDecisionKind.SKIP
+                weather_result.reason = "zone profile skip: " + recommendation.explanation
+            elif weather_result.decision == WeatherDecisionKind.ALLOW:
+                weather_result.reason = "zone profile adjusted duration: " + recommendation.explanation
+
+        raw_response = summary.raw_response if summary else None
+        if raw_response is not None and summary is not None:
+            raw_response = {
+                **raw_response,
+                "irrigation_weather": {
+                    "temperature_max_24h_c": summary.temperature_max_24h_c,
+                    "precipitation_last_24h_mm": summary.precipitation_last_24h_mm,
+                    "precipitation_next_24h_mm": summary.precipitation_next_24h_mm,
+                    "cloud_cover_avg_pct": summary.cloud_cover_avg_pct,
+                },
+                **({"irrigation_recommendation": recommendation.as_dict()} if recommendation is not None else {}),
+            }
         self.runs.create_weather_decision(
             run_id=run.id,
             latitude=app_settings.latitude,
@@ -386,13 +437,15 @@ class WateringService:
             precipitation_sum_mm=summary.precipitation_sum_mm if summary else None,
             decision=weather_result.decision,
             reason=weather_result.reason,
-            raw_response=summary.raw_response if summary else None,
+            raw_response=raw_response,
         )
         if weather_result.decision in {WeatherDecisionKind.SKIP, WeatherDecisionKind.ERROR}:
             run.status = RunStatus.SKIPPED.value if weather_result.decision == WeatherDecisionKind.SKIP else RunStatus.FAILED.value
             run.finished_at = datetime.now(UTC)
             run.reason = weather_result.reason
             return False
+        if recommendation is not None and not is_adaptive_run:
+            run.requested_duration_minutes = recommendation.adjusted_duration_minutes
         self.gpio.activate_zone(zone)
         self.gpio_state.record_state(zone_id=zone.id, state=True, source="scheduler", reason="watering run started")
         run.status = RunStatus.RUNNING.value

@@ -8,10 +8,14 @@ from sqlalchemy import text
 
 from app.application.watering_service import WateringService
 from app.application.gpio_state_service import GpioStateService
+from app.application.irrigation_projection_service import IrrigationProjectionService
+from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import get_settings
+from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan
 from app.domain.models import RunStatus, TriggerType
 from app.domain.services import current_schedule_slot
+from app.domain.zone_irrigation import ZoneWeatherFacts
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, WateringRunRepository, ZoneRepository
 from app.infrastructure.db.session import SessionLocal
@@ -66,6 +70,8 @@ class SchedulerRunner:
             zone = session.get(orm.Zone, schedule.zone_id)
             if not zone or not zone.active:
                 continue
+            if zone.scheduling_mode == "adaptive":
+                continue
             active_sequence = watering.active_manual_sequence_window()
             if active_sequence and slot <= active_sequence[1]:
                 skipped_run = runs.create_planned_run(
@@ -90,7 +96,121 @@ class SchedulerRunner:
                 scheduled_time=slot.time(),
                 reason="planned by scheduler",
             )
+        self._plan_adaptive_runs(session, app_settings=app_settings, watering=watering, runs=runs, now=now)
         session.commit()
+
+    def _plan_adaptive_runs(self, session, *, app_settings, watering: WateringService, runs: WateringRunRepository, now: datetime) -> None:
+        weather_service = WeatherService(session, self.settings)
+        weather_summary = weather_service.try_fetch_current_summary(app_settings=app_settings) if app_settings.weather_enabled else None
+        active_sequence = watering.active_manual_sequence_window()
+        zones = ZoneRepository(session).list()
+        for zone in zones:
+            if not zone.active or zone.scheduling_mode != "adaptive" or not zone.adaptive_irrigation_plan_json or not zone.irrigation_profile_json:
+                continue
+            profile = ZoneIrrigationProfile.model_validate(zone.irrigation_profile_json)
+            plan = AdaptiveIrrigationPlan.model_validate(zone.adaptive_irrigation_plan_json)
+            decision = decide_adaptive_plan(
+                profile=profile,
+                plan=plan,
+                weather=ZoneWeatherFacts(
+                    temperature_max_c=weather_summary.temperature_max_24h_c if weather_summary else None,
+                    rain_last_24h_mm=weather_summary.precipitation_last_24h_mm if weather_summary else None,
+                    rain_next_24h_mm=weather_summary.precipitation_next_24h_mm if weather_summary else None,
+                    cloud_cover_avg_pct=weather_summary.cloud_cover_avg_pct if weather_summary else None,
+                ),
+                now=now,
+                last_run_at=self._last_adaptive_run_at(session, zone_id=zone.id),
+                max_duration_minutes=zone.max_duration_minutes,
+                already_watered_today=self._has_adaptive_run_today(session, zone_id=zone.id, now=now),
+            )
+            if not decision.scheduled_at or self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
+                continue
+            if active_sequence and decision.scheduled_at <= active_sequence[1]:
+                skipped_run = runs.create_planned_run(
+                    zone_id=zone.id,
+                    schedule_id=None,
+                    trigger_type=TriggerType.SCHEDULED,
+                    duration_minutes=max(1, plan.baseDurationMinutes),
+                    scheduled_for=decision.scheduled_at.date(),
+                    scheduled_time=decision.scheduled_at.time(),
+                    status=RunStatus.SKIPPED,
+                    reason="Einmalig wegen manueller Gesamtbewässerung übersprungen.",
+                    sequence_group_id=active_sequence[0],
+                )
+                skipped_run.finished_at = now
+                continue
+            if not decision.should_plan:
+                skipped_run = runs.create_planned_run(
+                    zone_id=zone.id,
+                    schedule_id=None,
+                    trigger_type=TriggerType.SCHEDULED,
+                    duration_minutes=max(1, plan.baseDurationMinutes),
+                    scheduled_for=decision.scheduled_at.date(),
+                    scheduled_time=decision.scheduled_at.time(),
+                    status=RunStatus.SKIPPED,
+                    reason=f"{ADAPTIVE_REASON_PREFIX} {decision.reason}",
+                )
+                skipped_run.finished_at = now
+                continue
+            planned_start = IrrigationProjectionService(session, self.settings).next_available_start(
+                candidate_start=decision.scheduled_at,
+                duration_minutes=decision.duration_minutes,
+                zone_id=zone.id,
+            )
+            runs.create_planned_run(
+                zone_id=zone.id,
+                schedule_id=None,
+                trigger_type=TriggerType.SCHEDULED,
+                duration_minutes=decision.duration_minutes,
+                scheduled_for=planned_start.date(),
+                scheduled_time=planned_start.time(),
+                reason=f"{ADAPTIVE_REASON_PREFIX} {decision.reason}",
+            )
+
+    def _adaptive_slot_exists(self, session, *, zone_id: int, slot: datetime) -> bool:
+        return (
+            session.query(orm.WateringRun.id)
+            .filter(
+                orm.WateringRun.zone_id == zone_id,
+                orm.WateringRun.schedule_id.is_(None),
+                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.scheduled_for == slot.date(),
+                orm.WateringRun.scheduled_time == slot.time(),
+                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+            )
+            .first()
+            is not None
+        )
+
+    def _last_adaptive_run_at(self, session, *, zone_id: int) -> datetime | None:
+        run = (
+            session.query(orm.WateringRun)
+            .filter(
+                orm.WateringRun.zone_id == zone_id,
+                orm.WateringRun.schedule_id.is_(None),
+                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+                orm.WateringRun.status.in_([RunStatus.COMPLETED.value, RunStatus.RUNNING.value]),
+            )
+            .order_by(orm.WateringRun.created_at.desc())
+            .first()
+        )
+        return run.finished_at or run.started_at if run else None
+
+    def _has_adaptive_run_today(self, session, *, zone_id: int, now: datetime) -> bool:
+        return (
+            session.query(orm.WateringRun.id)
+            .filter(
+                orm.WateringRun.zone_id == zone_id,
+                orm.WateringRun.schedule_id.is_(None),
+                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.scheduled_for == now.date(),
+                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+                orm.WateringRun.status.in_([RunStatus.PLANNED.value, RunStatus.RUNNING.value, RunStatus.COMPLETED.value]),
+            )
+            .first()
+            is not None
+        )
 
     def tick(self) -> None:
         session = SessionLocal()

@@ -10,6 +10,118 @@ AreaStatus = Literal["disabled", "active", "watering", "scheduled-soon", "paused
 AreaRunState = Literal["idle", "queued", "running", "stopping"]
 WeatherOverviewDecision = Literal["allow", "skip", "error", "inactive", "unknown"]
 WeatherOverviewSourceStatus = Literal["fresh", "stale", "unavailable"]
+ZoneType = Literal["lawn", "bed", "raised_bed", "container", "greenhouse", "hedge", "other"]
+PlantType = Literal["grass", "vegetables", "flowers", "herbs", "shrubs", "trees", "mixed", "unknown"]
+SunExposure = Literal["shade", "partial_shade", "sunny", "full_sun"]
+RainExposure = Literal["none", "low", "medium", "high", "full"]
+WaterNeedLevel = Literal["low", "medium", "high", "very_high"]
+DryingSpeed = Literal["slow", "normal", "fast", "very_fast"]
+WateringFrequencyPreference = Literal["rare_deep", "normal", "frequent_short"]
+PreferredTimeWindow = Literal["early_morning", "morning", "evening", "morning_and_evening"]
+StrategyType = Literal["water_saving", "balanced", "growth_oriented"]
+RiskProfileType = Literal["avoid_overwatering", "balanced", "avoid_drought_stress"]
+SchedulingMode = Literal["static", "adaptive"]
+IrrigationMethod = Literal["sprinkler", "drip", "soaker_hose", "manual", "unknown"]
+
+
+class ZoneIrrigationProfile(BaseModel):
+    zoneType: ZoneType = "other"
+    plantType: PlantType = "unknown"
+    sunExposure: SunExposure = "partial_shade"
+    rainExposure: RainExposure = "medium"
+    rainEffectiveness: float = Field(default=0.6, ge=0.0, le=1.0)
+    waterNeedLevel: WaterNeedLevel = "medium"
+    baseWaterNeedMmPerDay: float = Field(default=3.0, ge=0.0, le=20.0)
+    temperatureSensitivity: float = Field(default=1.0, ge=0.5, le=2.0)
+    sunSensitivity: float = Field(default=1.0, ge=0.5, le=2.0)
+    containerFactor: float = Field(default=1.0, ge=1.0, le=2.5)
+    dryingSpeed: DryingSpeed = "normal"
+    wateringFrequencyPreference: WateringFrequencyPreference = "normal"
+    preferredTimeWindow: PreferredTimeWindow = "morning"
+    strategy: StrategyType = "balanced"
+    riskProfile: RiskProfileType = "balanced"
+    explanation: str = Field(default="", min_length=1)
+
+    @field_validator("rainEffectiveness", "baseWaterNeedMmPerDay", "temperatureSensitivity", "sunSensitivity", "containerFactor")
+    @classmethod
+    def round_profile_floats(cls, value: float) -> float:
+        return round(float(value), 2)
+
+
+class ZoneProfileDiffItem(BaseModel):
+    field: str
+    label: str
+    before_display: str
+    after_display: str
+
+
+class ZoneProfileSuggestionRequest(BaseModel):
+    description: str = Field(min_length=5)
+    current_profile: ZoneIrrigationProfile | None = None
+
+
+class ZoneProfileAdjustmentRequest(BaseModel):
+    instruction: str = Field(min_length=3)
+    description: str | None = None
+    current_profile: ZoneIrrigationProfile | None = None
+
+
+class ZoneProfileSuggestionResponse(BaseModel):
+    profile: ZoneIrrigationProfile
+    warnings: list[str]
+    explanation: str
+    summary: list[str]
+    diff: list[ZoneProfileDiffItem] = []
+
+
+class AdaptiveIrrigationPlan(BaseModel):
+    irrigationMethod: IrrigationMethod = "unknown"
+    preferredTimeWindows: list[PreferredTimeWindow] = Field(default_factory=lambda: ["early_morning"])
+    avoidMidday: bool = True
+    allowSecondDailyRun: bool = False
+    minIntervalHours: int = Field(default=18, ge=1, le=72)
+    baseDurationMinutes: int = Field(default=8, ge=1, le=240)
+    minDurationMinutes: int = Field(default=2, ge=1, le=240)
+    maxDurationMinutes: int = Field(default=20, ge=1, le=240)
+    rainSkipThresholdMm: float = Field(default=4.0, ge=0.0, le=50.0)
+    rainDelayThresholdMm: float = Field(default=2.0, ge=0.0, le=50.0)
+    heatThresholdC: float = Field(default=28.0, ge=0.0, le=50.0)
+    highNeedThresholdMm: float = Field(default=3.0, ge=0.0, le=20.0)
+    rules: list[str] = Field(default_factory=list)
+    explanation: str = Field(default="", min_length=1)
+
+    @field_validator("preferredTimeWindows")
+    @classmethod
+    def require_time_window(cls, value: list[PreferredTimeWindow]) -> list[PreferredTimeWindow]:
+        return value or ["early_morning"]
+
+    @field_validator("rainSkipThresholdMm", "rainDelayThresholdMm", "heatThresholdC", "highNeedThresholdMm")
+    @classmethod
+    def round_plan_floats(cls, value: float) -> float:
+        return round(float(value), 2)
+
+
+class ZoneAdaptivePlanRequest(BaseModel):
+    description: str | None = None
+    profile: ZoneIrrigationProfile
+    max_duration_minutes: int = Field(default=20, ge=1, le=240)
+
+
+class ZoneAdaptivePlanResponse(BaseModel):
+    plan: AdaptiveIrrigationPlan
+    warnings: list[str]
+    explanation: str
+    summary: list[str]
+
+
+class ZoneAssistantTranscriptionRequest(BaseModel):
+    audio_base64: str = Field(min_length=16)
+    filename: str = "zone-description.webm"
+    mime_type: str = "audio/webm"
+
+
+class ZoneAssistantTranscriptionResponse(BaseModel):
+    text: str
 
 
 class ZoneCreate(BaseModel):
@@ -23,6 +135,10 @@ class ZoneCreate(BaseModel):
     weather_enabled: bool = False
     weather_probability_threshold: int | None = Field(default=None, ge=0, le=100)
     weather_precipitation_mm_threshold: float | None = Field(default=None, ge=0)
+    zone_profile_description: str | None = None
+    irrigation_profile: ZoneIrrigationProfile | None = None
+    scheduling_mode: SchedulingMode = "static"
+    adaptive_irrigation_plan: AdaptiveIrrigationPlan | None = None
 
 
 class ZoneUpdate(ZoneCreate):
@@ -53,6 +169,8 @@ class AreaRuntimeResponse(ZoneCreate):
     weather_decision: WeatherOverviewDecision | None = None
     weather_reason_human: str | None = None
     weather_snapshot: "WeatherOverviewResponse | None" = None
+    zone_profile_description: str | None = None
+    irrigation_profile: ZoneIrrigationProfile | None = None
     manual_start_allowed: bool = False
     manual_start_block_reason: str | None = None
     active_shape_count: int = 0
@@ -97,6 +215,28 @@ class ScheduleResponse(BaseModel):
     weather_precipitation_mm_threshold: float | None
     created_at: datetime
     updated_at: datetime
+
+
+class IrrigationProjectionItem(BaseModel):
+    zone_id: int
+    zone_name: str
+    schedule_id: int | None = None
+    source: Literal["manual_rule", "adaptive_rule"]
+    status: Literal["planned", "skipped", "blocked"]
+    planned_start: datetime
+    planned_end: datetime
+    original_start: datetime
+    duration_minutes: int
+    reason: str
+    weather_summary: str | None = None
+    adjusted_for_sequence: bool = False
+
+
+class IrrigationProjectionResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    weather_source_status: WeatherOverviewSourceStatus
+    items: list[IrrigationProjectionItem]
 
 
 class ManualRunCreate(BaseModel):
@@ -146,6 +286,10 @@ class WeatherOverviewResponse(BaseModel):
     current_weather_code: int | None = None
     current_is_day: bool | None = None
     current_temperature_c: float | None = None
+    temperature_max_24h_c: float | None = None
+    precipitation_last_24h_mm: float | None = None
+    precipitation_next_24h_mm: float | None = None
+    cloud_cover_avg_pct: float | None = None
     forecast_window_hours: int
     precipitation_probability_max: float | None
     precipitation_sum_mm: float | None
@@ -155,6 +299,7 @@ class WeatherOverviewResponse(BaseModel):
     source_status: WeatherOverviewSourceStatus
     checked_at: datetime | None
     reason_human: str
+    irrigation_recommendation: dict | None = None
 
 
 class SettingsResponse(BaseModel):

@@ -74,6 +74,9 @@ export class WeatherOverviewBarComponent {
     if (!this.overview.weather_enabled) {
       return 'Wettersteuerung ist ausgeschaltet';
     }
+    if (this.overview.source_status === 'unavailable') {
+      return 'Wetterdaten konnten wegen eines API-Fehlers nicht abgerufen werden';
+    }
     const probability =
       this.overview.precipitation_probability_max === null || this.overview.precipitation_probability_max === undefined
         ? 'Regenwahrscheinlichkeit unbekannt'

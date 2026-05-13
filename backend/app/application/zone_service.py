@@ -41,6 +41,7 @@ class ZoneService:
             results.append(
                 {
                     **zone.__dict__,
+                    "irrigation_profile": zone.irrigation_profile_json,
                     "running": zone.id in running_zone_ids,
                     "next_watering_at": min(next_candidates) if next_candidates else None,
                     "last_watering_at": (
@@ -55,7 +56,10 @@ class ZoneService:
         return results
 
     def create_zone(self, payload: ZoneCreate) -> orm.Zone:
-        zone = orm.Zone(**payload.model_dump())
+        data = payload.model_dump()
+        profile = data.pop("irrigation_profile", None)
+        adaptive_plan = data.pop("adaptive_irrigation_plan", None)
+        zone = orm.Zone(**data, irrigation_profile_json=profile, adaptive_irrigation_plan_json=adaptive_plan)
         self.zones.add(zone)
         self.session.commit()
         self.session.refresh(zone)
@@ -65,8 +69,13 @@ class ZoneService:
         zone = self.zones.get(zone_id)
         if not zone:
             return None
-        for key, value in payload.model_dump().items():
+        data = payload.model_dump()
+        profile = data.pop("irrigation_profile", None)
+        adaptive_plan = data.pop("adaptive_irrigation_plan", None)
+        for key, value in data.items():
             setattr(zone, key, value)
+        zone.irrigation_profile_json = profile
+        zone.adaptive_irrigation_plan_json = adaptive_plan
         self.session.commit()
         self.session.refresh(zone)
         return zone

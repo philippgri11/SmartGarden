@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.application.irrigation_projection_service import IrrigationProjectionService
 from app.application.weather_service import WeatherService
 from app.application.watering_service import WateringService
 from app.config import Settings
 from app.domain.models import RunStatus
-from app.domain.services import next_schedule_occurrence
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, WateringRunRepository, ZoneRepository
 
@@ -51,6 +51,12 @@ class RuntimeService:
         )
         zones = self.zones.list()
         runs_by_zone = self._load_runs_by_zone([zone.id for zone in zones])
+        projection = IrrigationProjectionService(self.session, self.settings).build_projection(days=14, now=current_time)
+        next_by_zone: dict[int, datetime] = {}
+        for item in projection.items:
+            if item.status != "planned" or item.zone_id in next_by_zone:
+                continue
+            next_by_zone[item.zone_id] = item.planned_start
 
         return [
             self._build_area_snapshot(
@@ -59,6 +65,7 @@ class RuntimeService:
                 app_settings=current_settings,
                 now=current_time,
                 current_forecast=current_forecast,
+                next_watering_at=next_by_zone.get(zone.id),
             )
             for zone in zones
         ]
@@ -79,21 +86,14 @@ class RuntimeService:
         app_settings: orm.AppSetting,
         now: datetime,
         current_forecast,
+        next_watering_at: datetime | None,
     ) -> dict:
         current_run = next((run for run in zone_runs if run.status in {RunStatus.PLANNED.value, RunStatus.RUNNING.value}), None)
         last_finished_run = next((run for run in zone_runs if run.status not in {RunStatus.PLANNED.value, RunStatus.RUNNING.value}), None)
         effective_probability_threshold = zone.weather_probability_threshold or app_settings.weather_probability_threshold
         effective_precipitation_threshold = zone.weather_precipitation_mm_threshold or app_settings.weather_precipitation_mm_threshold
         schedule_weather_enabled = any(schedule.active and schedule.weather_enabled for schedule in zone.schedules)
-        weather_enabled_effective = bool(app_settings.weather_enabled and (zone.weather_enabled or schedule_weather_enabled))
-
-        next_candidates = [
-            next_schedule_occurrence(schedule, now)
-            for schedule in zone.schedules
-            if schedule.active
-        ]
-        next_candidates = [candidate for candidate in next_candidates if candidate is not None]
-        next_watering_at = min(next_candidates) if next_candidates else None
+        weather_enabled_effective = bool(app_settings.weather_enabled and (zone.weather_enabled or schedule_weather_enabled or zone.scheduling_mode == "adaptive"))
 
         run_state = self._derive_run_state(current_run)
         status = self._derive_area_status(
@@ -165,6 +165,10 @@ class RuntimeService:
             "weather_decision": weather_snapshot["decision"],
             "weather_reason_human": weather_snapshot["reason_human"],
             "weather_snapshot": weather_snapshot,
+            "zone_profile_description": zone.zone_profile_description,
+            "irrigation_profile": zone.irrigation_profile_json,
+            "scheduling_mode": zone.scheduling_mode,
+            "adaptive_irrigation_plan": zone.adaptive_irrigation_plan_json,
             "manual_start_allowed": manual_start_block_reason is None,
             "manual_start_block_reason": manual_start_block_reason,
             "active_shape_count": len(zone.map_shapes),
@@ -173,16 +177,12 @@ class RuntimeService:
     def _build_summary(self, *, app_settings: orm.AppSetting, areas: list[dict], now: datetime, manual_sequence: dict | None) -> dict:
         active_schedules = self.schedules.list_active()
         active_schedule_count = 0
-        next_candidates: list[datetime] = []
         for schedule in active_schedules:
             zone = next((item for item in areas if item["id"] == schedule.zone_id), None)
-            if not zone or not zone["active"]:
+            if not zone or not zone["active"] or zone.get("scheduling_mode") == "adaptive":
                 continue
             active_schedule_count += 1
-            occurrence = next_schedule_occurrence(schedule, now)
-            if occurrence is not None:
-                next_candidates.append(occurrence)
-
+        next_candidates = [area.get("next_watering_at") for area in areas if area.get("next_watering_at")]
         next_watering_at = min(next_candidates) if next_candidates else None
         last_area = next(
             (area for area in sorted(areas, key=lambda item: item["last_watering_at"] or datetime.min.replace(tzinfo=UTC), reverse=True) if area["last_watering_at"]),

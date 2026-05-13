@@ -27,7 +27,7 @@ export class WeatherDecisionBadgeComponent {
     if (decision === 'skip') {
       return 'Regen erwartet';
     }
-    if (decision === 'error') {
+    if (decision === 'error' || this.overview?.source_status === 'unavailable') {
       return 'Wetterdaten fehlen';
     }
     if (decision === 'allow') {
@@ -45,7 +45,7 @@ export class WeatherDecisionBadgeComponent {
     if (decision === 'skip') {
       return 'weather-skip';
     }
-    if (decision === 'error') {
+    if (decision === 'error' || this.overview?.source_status === 'unavailable') {
       return 'weather-error';
     }
     return 'weather-on';

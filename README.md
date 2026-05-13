@@ -233,6 +233,7 @@ Dabei gilt auf dem Pi:
 Vor dem Pi-Deployment:
 
 - `.env` mit echtem `POSTGRES_PASSWORD` anlegen
+- optional `OPENAI_API_KEY` als Kubernetes-Secret setzen, damit der KI-Zonenassistent die ChatGPT API nutzt; ohne Key fällt das Backend auf die lokale fachliche Vorschlagslogik zurück
 - optional `k8s/secret.example.yaml` als Vorlage ansehen, aber nicht direkt verwenden
 - Images auf dem Pi oder in einer erreichbaren Registry bereitstellen
 
@@ -282,6 +283,33 @@ sudo kubectl -n irrigation get pods
 curl -I http://127.0.0.1/
 curl http://127.0.0.1/api/runtime
 ```
+
+### 7. Automatisches Deployment nach grüner CI
+
+GitHub Actions führt Backend-Tests, Frontend-Build und Frontend-Unit-Tests für jeden Branch aus. Nach grünen Tests baut GitHub ARM64-Images und veröffentlicht sie in der GitHub Container Registry. Der Pi pollt danach GitHub und deployt nur Commits, deren Checks grün sind; auf dem Pi werden keine Docker-Images gebaut.
+
+Einmalig auf dem Pi:
+
+```bash
+cd /home/pi/SmartGarden
+SMARTGARDEN_AUTO_DEPLOY_BRANCH=main bash scripts/install-pi-auto-deploy.sh
+```
+
+Der Timer deployt automatisch den konfigurierten Hauptbranch. Feature-Branches werden nicht automatisch deployt. Bei Bedarf manuell auf dem Pi:
+
+```bash
+cd /home/pi/SmartGarden
+bash scripts/pi-deploy-branch.sh ai
+```
+
+Auch dieser manuelle Feature-Deploy bricht ab, wenn die GitHub-CI für den Branch-Commit nicht grün ist.
+
+Die Images werden per Commit-SHA referenziert:
+
+- `ghcr.io/philippgri11/smartgarden-backend:<commit-sha>`
+- `ghcr.io/philippgri11/smartgarden-frontend:<commit-sha>`
+
+Wenn die GHCR-Packages privat sind, braucht der Cluster zusätzlich ein `imagePullSecret` mit Leserechten auf die Registry. Alternativ können die beiden Packages in GitHub öffentlich geschaltet werden.
 
 ## GPIO-Hinweise
 

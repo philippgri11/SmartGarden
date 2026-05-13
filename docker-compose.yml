@@ -34,6 +34,8 @@ services:
       DEFAULT_LONGITUDE: ${DEFAULT_LONGITUDE:-13.405}
       SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-2}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8080}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
     command: ["python", "-m", "app.entrypoint", "api"]
     ports:
       - "8000:8000"

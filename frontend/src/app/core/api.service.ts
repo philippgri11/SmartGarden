@@ -7,6 +7,7 @@ import {
   GardenMap,
   GardenMapView,
   GpioEvent,
+  IrrigationProjection,
   PauseSystemPayload,
   RunAllAreasResponse,
   RuntimeSnapshot,
@@ -15,7 +16,13 @@ import {
   WateringRun,
   WinterModePayload,
   Zone,
-  ZoneMapShape
+  ZoneAdaptivePlanRequest,
+  ZoneAdaptivePlanResponse,
+  ZoneAssistantTranscriptionResponse,
+  ZoneMapShape,
+  ZoneProfileAdjustmentRequest,
+  ZoneProfileSuggestionRequest,
+  ZoneProfileSuggestionResponse
 } from './api.models';
 
 @Injectable({ providedIn: 'root' })
@@ -33,6 +40,22 @@ export class ApiService {
 
   updateZone(id: number, payload: Partial<Zone>): Observable<Zone> {
     return this.http.put<Zone>(`${this.baseUrl}/zones/${id}`, payload);
+  }
+
+  suggestZoneProfile(payload: ZoneProfileSuggestionRequest): Observable<ZoneProfileSuggestionResponse> {
+    return this.http.post<ZoneProfileSuggestionResponse>(`${this.baseUrl}/zones/assistant/suggest`, payload);
+  }
+
+  adjustZoneProfile(id: number, payload: ZoneProfileAdjustmentRequest): Observable<ZoneProfileSuggestionResponse> {
+    return this.http.post<ZoneProfileSuggestionResponse>(`${this.baseUrl}/zones/${id}/assistant/adjust`, payload);
+  }
+
+  suggestAdaptivePlan(payload: ZoneAdaptivePlanRequest): Observable<ZoneAdaptivePlanResponse> {
+    return this.http.post<ZoneAdaptivePlanResponse>(`${this.baseUrl}/zones/assistant/adaptive-plan`, payload);
+  }
+
+  transcribeZoneAudio(payload: { audio_base64: string; filename: string; mime_type: string }): Observable<ZoneAssistantTranscriptionResponse> {
+    return this.http.post<ZoneAssistantTranscriptionResponse>(`${this.baseUrl}/zones/assistant/transcribe`, payload);
   }
 
   deleteZone(id: number): Observable<void> {
@@ -83,6 +106,10 @@ export class ApiService {
 
   getSchedules(): Observable<Schedule[]> {
     return this.http.get<Schedule[]>(`${this.baseUrl}/schedules`);
+  }
+
+  getIrrigationProjection(days = 7): Observable<IrrigationProjection> {
+    return this.http.get<IrrigationProjection>(`${this.baseUrl}/schedules/projection`, { params: { days } });
   }
 
   createSchedule(payload: Partial<Schedule>): Observable<Schedule> {

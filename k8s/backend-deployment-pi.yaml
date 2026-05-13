@@ -34,6 +34,12 @@ spec:
                 secretKeyRef:
                   name: irrigation-secret
                   key: POSTGRES_PASSWORD
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: OPENAI_API_KEY
+                  optional: true
           startupProbe:
             httpGet:
               path: /health/live

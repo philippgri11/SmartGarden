@@ -1,7 +1,15 @@
 import { CommonModule, DatePipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 
-import { Zone } from '../core/api.models';
+import { Zone, ZoneIrrigationProfile } from '../core/api.models';
+import {
+  WATER_NEED_LABELS,
+  ZONE_TYPE_LABELS,
+  buildZoneProfileSummary,
+  containerFactorLabel,
+  rainEffectivenessLabel,
+  sensitivityLabel,
+} from '../core/zone-profile.utils';
 import { AreaStatusBadgeComponent } from './area-status-badge.component';
 import { ExpertSectionComponent } from './expert-section.component';
 import { ManualRunControlComponent } from './manual-run-control.component';
@@ -29,6 +37,16 @@ import { WeatherDecisionBadgeComponent } from './weather-decision-badge.componen
           <p class="muted area-description" *ngIf="area.description">{{ area.description }}</p>
         </div>
         <app-area-status-badge [status]="status" />
+      </div>
+
+      <div class="area-profile-compact" *ngIf="area.irrigation_profile as profile">
+        <div class="area-profile-compact-head">
+          <strong>{{ zoneTypeLabel(profile.zoneType) }}</strong>
+          <span>{{ waterNeedLabel(profile.waterNeedLevel) }}</span>
+        </div>
+        <div class="area-profile-compact-chips">
+          <span *ngFor="let item of profileSummary()">{{ item }}</span>
+        </div>
       </div>
 
       <div class="area-facts">
@@ -62,8 +80,16 @@ import { WeatherDecisionBadgeComponent } from './weather-decision-badge.componen
         <button class="button secondary" type="button" (click)="editArea.emit()">Bereich bearbeiten</button>
       </div>
 
-      <app-expert-section [enabled]="expertMode" title="Technische Details">
+      <app-expert-section [enabled]="expertMode" title="Technische und fachliche Details">
         <app-weather-analysis-panel *ngIf="area.weather_snapshot" [overview]="area.weather_snapshot" />
+        <div class="expert-grid" *ngIf="area.irrigation_profile as profile">
+          <div>Regen zählt: {{ rainEffectiveness(profile.rainEffectiveness) }} ({{ profile.rainEffectiveness | number: '1.1-1' }})</div>
+          <div>Hitzereaktion: {{ sensitivity(profile.temperatureSensitivity) }} ({{ profile.temperatureSensitivity | number: '1.1-1' }})</div>
+          <div>Sonnenreaktion: {{ sensitivity(profile.sunSensitivity) }} ({{ profile.sunSensitivity | number: '1.1-1' }})</div>
+          <div>Gefäßfaktor: {{ containerLabel(profile.containerFactor) }} ({{ profile.containerFactor | number: '1.1-1' }})</div>
+          <div>Basiswasserbedarf: {{ profile.baseWaterNeedMmPerDay | number: '1.1-1' }} mm/Tag</div>
+          <div>Bevorzugte Bewässerung: {{ profile.preferredTimeWindow }}</div>
+        </div>
         <div class="expert-grid">
           <div>GPIO-Chip: {{ area.gpio_chip }}</div>
           <div>GPIO-Line: {{ area.gpio_line }}</div>
@@ -87,4 +113,28 @@ export class AreaCardComponent {
   @Output() stop = new EventEmitter<void>();
   @Output() editSchedule = new EventEmitter<number>();
   @Output() editArea = new EventEmitter<void>();
+
+  profileSummary(): string[] {
+    return buildZoneProfileSummary(this.area.irrigation_profile);
+  }
+
+  zoneTypeLabel(value: ZoneIrrigationProfile['zoneType']): string {
+    return ZONE_TYPE_LABELS[value];
+  }
+
+  waterNeedLabel(value: ZoneIrrigationProfile['waterNeedLevel']): string {
+    return WATER_NEED_LABELS[value];
+  }
+
+  rainEffectiveness(value: number): string {
+    return rainEffectivenessLabel(value);
+  }
+
+  sensitivity(value: number): string {
+    return sensitivityLabel(value);
+  }
+
+  containerLabel(value: number): string {
+    return containerFactorLabel(value);
+  }
 }

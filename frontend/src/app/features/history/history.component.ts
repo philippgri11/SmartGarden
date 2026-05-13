@@ -55,12 +55,12 @@ type FilterId = 'all' | 'completed' | 'skipped' | 'failed' | 'manual' | 'schedul
             <span>Auslöser: {{ run.trigger_type === 'manual' ? 'Manuell' : 'Automatisch' }}</span>
             <span *ngIf="displayReason(run)">Erklärung: {{ displayReason(run) }}</span>
           </div>
-          <app-expert-section [enabled]="expertMode()" title="Wetteranalyse" *ngIf="weatherDecisionFor(run)">
+          <app-expert-section [enabled]="expertMode()" title="Wetteranalyse" *ngIf="weatherDecisionFor(run) as weatherDecision">
             <div class="weather-analysis-panel">
               <div class="weather-analysis-grid">
-                <div><span>Geprüft am</span><strong>{{ weatherDecisionFor(run)?.checked_at ? (weatherDecisionFor(run)!.checked_at | date: 'short') : 'Unbekannt' }}</strong></div>
+                <div><span>Geprüft am</span><strong>{{ weatherDecision.checked_at ? (weatherDecision.checked_at | date: 'short') : 'Unbekannt' }}</strong></div>
                 <div><span>Prognose</span><strong>{{ weatherFacts(run) }}</strong></div>
-                <div><span>Entscheidung</span><strong>{{ weatherDecisionFor(run)?.reason_human || weatherDecisionFor(run)?.reason }}</strong></div>
+                <div><span>Entscheidung</span><strong>{{ weatherDecision.reason_human || weatherDecision.reason }}</strong></div>
               </div>
             </div>
           </app-expert-section>
@@ -135,15 +135,21 @@ export class HistoryComponent {
     return `Für ${zone} wurde ein Lauf vorbereitet.`;
   }
 
-  statusForRun(run: WateringRun): 'active' | 'paused' | 'error' | 'watering' {
+  statusForRun(run: WateringRun): 'completed' | 'skipped' | 'cancelled' | 'error' | 'watering' | 'active' {
     if (run.status === 'failed') {
       return 'error';
     }
     if (run.status === 'running') {
       return 'watering';
     }
-    if (run.status === 'skipped' || run.status === 'cancelled') {
-      return 'paused';
+    if (run.status === 'completed') {
+      return 'completed';
+    }
+    if (run.status === 'skipped') {
+      return 'skipped';
+    }
+    if (run.status === 'cancelled') {
+      return 'cancelled';
     }
     return 'active';
   }
