@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test:e2e": "node scripts/e2e-playwright.mjs"
+    "test:e2e": "node scripts/e2e-playwright.mjs",
+    "test:e2e:fixed-schedule": "node scripts/e2e-fixed-schedule-create.mjs"
   },
   "devDependencies": {
     "playwright": "^1.59.1"

@@ -35,6 +35,16 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
 type AssistantStep = 'describe' | 'profile' | 'automation';
 
+const WEEKDAYS = [
+  { id: 'mon', label: 'Mo' },
+  { id: 'tue', label: 'Di' },
+  { id: 'wed', label: 'Mi' },
+  { id: 'thu', label: 'Do' },
+  { id: 'fri', label: 'Fr' },
+  { id: 'sat', label: 'Sa' },
+  { id: 'sun', label: 'So' },
+];
+
 @Component({
   standalone: true,
   selector: 'app-zones',
@@ -127,7 +137,7 @@ type AssistantStep = 'describe' | 'profile' | 'automation';
               <strong>Vorschlag prüfen</strong>
               <small>Wasserbedarf, Tageszeit und Risiko.</small>
             </button>
-            <button class="assistant-step" type="button" [class.active]="assistantStep() === 'automation'" [disabled]="!hasProfileInput()" (click)="assistantStep.set('automation')">
+            <button class="assistant-step" type="button" [class.active]="assistantStep() === 'automation'" (click)="assistantStep.set('automation')">
               <span>3</span>
               <strong>Automatik wählen</strong>
               <small>Zeitplan oder KI-Regel.</small>
@@ -343,14 +353,72 @@ type AssistantStep = 'describe' | 'profile' | 'automation';
             </div>
 
             <div class="automation-mode-grid">
-              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'static'" (click)="planForm.controls.scheduling_mode.setValue('static')">
+              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'static'" (click)="selectAutomationMode('static')">
                 <strong>Feste Zeitpläne</strong>
                 <span>Die Regeln im Tab Zeitpläne bestimmen Uhrzeit und Dauer. Wetter kann Läufe nur überspringen oder leicht anpassen.</span>
               </button>
-              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'adaptive'" (click)="planForm.controls.scheduling_mode.setValue('adaptive')">
+              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'adaptive'" (click)="selectAutomationMode('adaptive')">
                 <strong>KI-adaptiv</strong>
                 <span>Die Zone nutzt ein Zeitfenster. Bedarf, Wetter, Mindestabstand und andere Zonen bestimmen die konkrete Uhrzeit und Dauer.</span>
               </button>
+            </div>
+
+            <div class="fixed-schedule-panel" *ngIf="planForm.controls.scheduling_mode.value === 'static'">
+              <div class="section-head">
+                <div>
+                  <h3>Fester Zeitplan</h3>
+                  <p class="muted" *ngIf="!selectedArea">Dieser Zeitplan wird beim Anlegen des Bereichs direkt mitgespeichert.</p>
+                  <p class="muted" *ngIf="selectedArea">Feste Regeln für bestehende Bereiche bearbeitest du im Tab Zeitpläne, damit keine Duplikate entstehen.</p>
+                </div>
+              </div>
+
+              <ng-container *ngIf="!selectedArea">
+                <div class="field">
+                  <span>Wochentage</span>
+                  <div class="weekday-grid">
+                    <button
+                      *ngFor="let day of weekdays"
+                      type="button"
+                      class="choice-pill"
+                      [class.active]="fixedScheduleWeekdays().includes(day.id)"
+                      (click)="toggleFixedScheduleWeekday(day.id)"
+                    >
+                      {{ day.label }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-grid form-grid-balanced">
+                  <label class="field field-span-3">
+                    <span>Startzeit</span>
+                    <input type="time" formControlName="fixedStartTime" />
+                  </label>
+                  <label class="field field-span-3">
+                    <span>Dauer</span>
+                    <input type="number" min="1" formControlName="fixedDurationMinutes" />
+                  </label>
+                  <label class="field field-span-3">
+                    <span>Wetter berücksichtigen</span>
+                    <select formControlName="fixedWeatherEnabled">
+                      <option [ngValue]="true">Ja</option>
+                      <option [ngValue]="false">Nein</option>
+                    </select>
+                  </label>
+                  <label class="field field-span-3" *ngIf="planForm.controls.fixedWeatherEnabled.value">
+                    <span>Regenwahrscheinlichkeit ab (%)</span>
+                    <input type="number" formControlName="fixedWeatherProbabilityThreshold" />
+                  </label>
+                  <label class="field field-span-3" *ngIf="planForm.controls.fixedWeatherEnabled.value">
+                    <span>Regenmenge ab (mm)</span>
+                    <input type="number" formControlName="fixedWeatherPrecipitationThreshold" />
+                  </label>
+                </div>
+
+                <div class="schedule-preview">
+                  <strong>Vorschau</strong>
+                  <p>{{ fixedSchedulePreview() }}</p>
+                </div>
+              </ng-container>
             </div>
 
             <div class="assistant-suggestion" *ngIf="planSuggestion() as suggestion">
@@ -551,6 +619,8 @@ export class ZonesComponent {
   readonly minutes = signal<Record<number, number>>({});
   readonly showForm = signal(false);
   readonly areaEditing = signal(false);
+  readonly fixedScheduleWeekdays = signal<string[]>(['mon', 'wed', 'fri']);
+  readonly weekdays = WEEKDAYS;
   selectedArea: Zone | null = null;
   private mediaRecorder?: MediaRecorder;
   private audioChunks: Blob[] = [];
@@ -606,6 +676,11 @@ export class ZonesComponent {
     highNeedThresholdMm: [3, Validators.required],
     rulesText: ['', Validators.required],
     explanation: ['Noch kein adaptiver Regelplan übernommen.', Validators.required],
+    fixedStartTime: ['06:00', Validators.required],
+    fixedDurationMinutes: [5, Validators.required],
+    fixedWeatherEnabled: [false, Validators.required],
+    fixedWeatherProbabilityThreshold: [70],
+    fixedWeatherPrecipitationThreshold: [2],
   });
 
   readonly zoneTypeOptions = this.optionEntries(ZONE_TYPE_LABELS);
@@ -647,19 +722,34 @@ export class ZonesComponent {
   }
 
   saveArea(): void {
+    if (this.planForm.controls.scheduling_mode.value === 'adaptive' && !this.hasRealProfile()) {
+      this.setFeedback('Für KI-adaptive Regeln muss zuerst ein Profilvorschlag übernommen werden.', 'warning');
+      return;
+    }
+    const isNewArea = !this.selectedArea;
     const payload = {
       ...this.form.getRawValue(),
-      irrigation_profile: this.currentProfile(),
+      irrigation_profile: this.hasRealProfile() ? this.currentProfile() : null,
       scheduling_mode: this.planForm.controls.scheduling_mode.value,
       adaptive_irrigation_plan: this.currentAdaptivePlan(),
     };
     const request$ = this.selectedArea
       ? this.api.updateZone(this.selectedArea.id, payload)
       : this.api.createZone(payload);
-    request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.setFeedback(this.selectedArea ? 'Bereich gespeichert.' : 'Bereich angelegt.');
-      this.resetForm();
-      this.runtime.load('areas-form-saved');
+    request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((zone) => {
+      if (isNewArea && this.planForm.controls.scheduling_mode.value === 'static') {
+        this.api.createSchedule(this.fixedSchedulePayload(zone.id)).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+          next: () => this.finishAreaSave('Bereich und fester Zeitplan angelegt.'),
+          error: (error) => {
+            this.selectedArea = zone;
+            this.areaEditing.set(false);
+            this.runtime.load('areas-created-without-schedule');
+            this.setFeedback(this.apiErrorMessage(error, 'Bereich wurde angelegt, der feste Zeitplan aber nicht.'), 'warning');
+          },
+        });
+        return;
+      }
+      this.finishAreaSave(this.selectedArea ? 'Bereich gespeichert.' : 'Bereich angelegt.');
     });
   }
 
@@ -733,6 +823,7 @@ export class ZonesComponent {
     this.planSuggestion.set(null);
     this.profileReady.set(false);
     this.adjustmentInstruction.set('');
+    this.fixedScheduleWeekdays.set(['mon', 'wed', 'fri']);
     this.assistantStep.set('describe');
     if (closeForm) {
       this.showForm.set(false);
@@ -918,6 +1009,9 @@ export class ZonesComponent {
 
   private currentAdaptivePlan(): AdaptiveIrrigationPlan | null {
     const value = this.planForm.getRawValue();
+    if (value.scheduling_mode === 'static') {
+      return null;
+    }
     return {
       irrigationMethod: value.irrigationMethod,
       preferredTimeWindows: [value.preferredTimeWindow],
@@ -960,7 +1054,69 @@ export class ZonesComponent {
       highNeedThresholdMm: plan?.highNeedThresholdMm ?? 3,
       rulesText: (plan?.rules ?? []).join('\n'),
       explanation: plan?.explanation ?? 'Noch kein adaptiver Regelplan übernommen.',
+      fixedStartTime: '06:00',
+      fixedDurationMinutes: 5,
+      fixedWeatherEnabled: false,
+      fixedWeatherProbabilityThreshold: 70,
+      fixedWeatherPrecipitationThreshold: 2,
     });
+  }
+
+  toggleFixedScheduleWeekday(dayId: string): void {
+    const current = this.fixedScheduleWeekdays();
+    const next = current.includes(dayId) ? current.filter((item) => item !== dayId) : [...current, dayId];
+    this.fixedScheduleWeekdays.set(next.length ? next : [dayId]);
+  }
+
+  selectAutomationMode(mode: 'static' | 'adaptive'): void {
+    if (mode === 'adaptive' && !this.hasRealProfile()) {
+      this.setFeedback('Übernimm zuerst einen Profilvorschlag, damit KI-adaptive Regeln fachlich passen.', 'warning');
+      return;
+    }
+    this.planForm.controls.scheduling_mode.setValue(mode);
+  }
+
+  fixedSchedulePreview(): string {
+    const value = this.planForm.getRawValue();
+    const days = this.fixedScheduleWeekdays()
+      .map((dayId) => WEEKDAYS.find((day) => day.id === dayId)?.label ?? dayId)
+      .join(', ');
+    const minutes = this.fixedScheduleDurationMinutes();
+    const weather = value.fixedWeatherEnabled ? 'Wetter wird berücksichtigt.' : 'Wetter wird nicht berücksichtigt.';
+    return `${days} um ${value.fixedStartTime} Uhr für ${minutes} ${minutes === 1 ? 'Minute' : 'Minuten'}. ${weather}`;
+  }
+
+  private fixedSchedulePayload(zoneId: number) {
+    const value = this.planForm.getRawValue();
+    return {
+      zone_id: zoneId,
+      active: true,
+      weekdays: this.fixedScheduleWeekdays(),
+      start_time: value.fixedStartTime,
+      duration_minutes: this.fixedScheduleDurationMinutes(),
+      interval_hours: null,
+      window_start: null,
+      window_end: null,
+      weather_enabled: Boolean(value.fixedWeatherEnabled),
+      weather_probability_threshold: Number(value.fixedWeatherProbabilityThreshold),
+      weather_precipitation_mm_threshold: Number(value.fixedWeatherPrecipitationThreshold),
+    };
+  }
+
+  private fixedScheduleDurationMinutes(): number {
+    return Math.max(
+      1,
+      Math.min(
+        Number(this.planForm.controls.fixedDurationMinutes.value),
+        Number(this.form.controls.max_duration_minutes.value),
+      ),
+    );
+  }
+
+  private finishAreaSave(message: string): void {
+    this.setFeedback(message);
+    this.resetForm();
+    this.runtime.load('areas-form-saved');
   }
 
   private async transcribeRecording(): Promise<void> {
