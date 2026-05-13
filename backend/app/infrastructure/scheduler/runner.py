@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from app.application.watering_service import WateringService
 from app.application.gpio_state_service import GpioStateService
+from app.application.irrigation_projection_service import IrrigationProjectionService
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import get_settings
@@ -151,13 +152,18 @@ class SchedulerRunner:
                 )
                 skipped_run.finished_at = now
                 continue
+            planned_start = IrrigationProjectionService(session, self.settings).next_available_start(
+                candidate_start=decision.scheduled_at,
+                duration_minutes=decision.duration_minutes,
+                zone_id=zone.id,
+            )
             runs.create_planned_run(
                 zone_id=zone.id,
                 schedule_id=None,
                 trigger_type=TriggerType.SCHEDULED,
                 duration_minutes=decision.duration_minutes,
-                scheduled_for=decision.scheduled_at.date(),
-                scheduled_time=decision.scheduled_at.time(),
+                scheduled_for=planned_start.date(),
+                scheduled_time=planned_start.time(),
                 reason=f"{ADAPTIVE_REASON_PREFIX} {decision.reason}",
             )
 

@@ -33,6 +33,7 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
 import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 
 type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
+type AssistantStep = 'describe' | 'profile' | 'automation';
 
 @Component({
   standalone: true,
@@ -44,9 +45,9 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
       <p>Hier legst du Bereiche an, passt Standarddauern an und steuerst jeden Bereich direkt.</p>
     </section>
 
-    <section class="panel" *ngIf="!showForm()">
+    <section class="panel compact-action-panel" *ngIf="!showForm()">
       <div class="toolbar">
-        <button class="button" type="button" (click)="openCreateForm()">Bereich anlegen</button>
+        <button class="button button-subtle" type="button" (click)="openCreateForm()">Bereich anlegen</button>
       </div>
     </section>
 
@@ -54,21 +55,42 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
       <div class="section-head">
         <div>
           <h3>{{ selectedArea ? 'Bereich bearbeiten' : 'Neuen Bereich anlegen' }}</h3>
-          <p class="muted">Technikdetails erscheinen nur im Expertenmodus.</p>
+          <p class="muted">{{ selectedArea && !areaEditing() ? 'Anzeigeansicht: keine Werte werden verändert.' : 'Technikdetails erscheinen nur im Expertenmodus.' }}</p>
         </div>
         <button class="button secondary" type="button" (click)="resetForm()">Schließen</button>
       </div>
-      <form [formGroup]="form" class="form-grid form-grid-balanced zones-form-grid" (ngSubmit)="saveArea()">
+
+      <div class="view-summary" *ngIf="selectedArea && !areaEditing()">
+        <div>
+          <span>Name</span>
+          <strong>{{ selectedArea.name }}</strong>
+        </div>
+        <div>
+          <span>Manuell</span>
+          <strong>{{ selectedArea.default_manual_duration_minutes }} min, max. {{ selectedArea.max_duration_minutes }} min</strong>
+        </div>
+        <div>
+          <span>Automatik</span>
+          <strong>{{ selectedArea.scheduling_mode === 'adaptive' ? 'KI-adaptiv' : 'Feste Zeitpläne' }}</strong>
+        </div>
+        <div>
+          <span>Wetter</span>
+          <strong>{{ selectedArea.weather_enabled ? 'aktiv' : 'aus' }}</strong>
+        </div>
+        <button class="button button-subtle" type="button" (click)="areaEditing.set(true)">Bereich bearbeiten</button>
+      </div>
+
+      <form *ngIf="!selectedArea || areaEditing()" [formGroup]="form" class="form-grid form-grid-balanced zones-form-grid" (ngSubmit)="saveArea()">
         <label class="field field-span-4">
           <span>Name</span>
           <input formControlName="name" />
         </label>
         <label class="field field-span-2">
-          <span>Standarddauer für manuellen Start</span>
+          <span>Standarddauer für manuellen Start <span class="info-dot" title="Gilt nur, wenn du diesen Bereich manuell startest oder alle Bereiche nacheinander bewässerst. Automatische Regeln können eigene Laufzeiten berechnen.">i</span></span>
           <input type="number" formControlName="default_manual_duration_minutes" />
         </label>
         <label class="field field-span-2">
-          <span>Maximale Laufzeit</span>
+          <span>Maximale Laufzeit <span class="info-dot" title="Sicherheitslimit für manuelle und automatische Läufe. Längere KI- oder Zeitplanwerte werden auf diese Dauer begrenzt.">i</span></span>
           <input type="number" formControlName="max_duration_minutes" />
         </label>
         <label class="field field-span-2">
@@ -79,7 +101,7 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
           </select>
         </label>
         <label class="field field-span-2">
-          <span>Wettersteuerung</span>
+          <span>Wettersteuerung <span class="info-dot" title="Wenn aktiv, prüft die App vor automatischen Läufen Wetterdaten. Bei KI-adaptiv fließen Wetter und Zonenprofil zusätzlich in Dauer und Auslassen ein.">i</span></span>
           <select formControlName="weather_enabled">
             <option [ngValue]="true">Ja</option>
             <option [ngValue]="false">Nein</option>
@@ -89,11 +111,38 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
         <div class="zone-assistant field-full">
           <div class="section-head">
             <div>
-              <h3>KI-Zonenassistent</h3>
-              <p class="muted">Beschreibe die Zone in Alltagssprache. Vorschläge werden erst aktiv, wenn du sie übernimmst und den Bereich speicherst.</p>
+              <h3>KI-Assistent</h3>
+              <p class="muted">Ein Satz reicht: Was wächst hier, wie sonnig ist es, kommt Regen hin?</p>
             </div>
           </div>
 
+          <div class="assistant-flow">
+            <button class="assistant-step" type="button" [class.active]="assistantStep() === 'describe'" (click)="assistantStep.set('describe')">
+              <span>1</span>
+              <strong>Beschreiben</strong>
+              <small>Alltagssprache oder Spracheingabe.</small>
+            </button>
+            <button class="assistant-step" type="button" [class.active]="assistantStep() === 'profile'" [disabled]="!hasProfileInput()" (click)="assistantStep.set('profile')">
+              <span>2</span>
+              <strong>Vorschlag prüfen</strong>
+              <small>Wasserbedarf, Tageszeit und Risiko.</small>
+            </button>
+            <button class="assistant-step" type="button" [class.active]="assistantStep() === 'automation'" [disabled]="!hasProfileInput()" (click)="assistantStep.set('automation')">
+              <span>3</span>
+              <strong>Automatik wählen</strong>
+              <small>Zeitplan oder KI-Regel.</small>
+            </button>
+          </div>
+
+          <div class="assistant-progress" *ngIf="assistantBusy()">
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+              <strong>{{ assistantBusyText() }}</strong>
+              <div class="progress-bar"><span></span></div>
+            </div>
+          </div>
+
+          <ng-container *ngIf="assistantStep() === 'describe'">
           <label class="field">
             <span>Beschreibe diese Zone</span>
             <div class="voice-input-shell">
@@ -118,11 +167,12 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
           </label>
 
           <div class="toolbar">
-            <button class="button secondary" type="button" (click)="suggestProfile()" [disabled]="assistantBusy()">Parameter vorschlagen</button>
-            <button class="button secondary" type="button" *ngIf="selectedArea" (click)="adjustProfile()" [disabled]="assistantBusy() || !adjustmentInstruction().trim()">Parameter per KI anpassen</button>
+            <button class="button button-subtle" type="button" (click)="suggestProfile()" [disabled]="assistantBusy()">Vorschlag erstellen</button>
           </div>
           <p class="muted" *ngIf="recording()">Aufnahme läuft. Tippe erneut auf das Mikrofon, um zu transkribieren.</p>
+          </ng-container>
 
+          <ng-container *ngIf="assistantStep() === 'profile'">
           <label class="field" *ngIf="selectedArea">
             <span>Parameter per KI anpassen</span>
             <div class="voice-input-shell">
@@ -145,6 +195,9 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
               </button>
             </div>
           </label>
+          <div class="toolbar" *ngIf="selectedArea">
+            <button class="button button-subtle" type="button" (click)="adjustProfile()" [disabled]="assistantBusy() || !adjustmentInstruction().trim()">Anpassung anwenden</button>
+          </div>
 
           <div class="assistant-suggestion" *ngIf="profileSuggestion() as suggestion">
             <strong>Vorschlag</strong>
@@ -160,7 +213,30 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
             </div>
           </div>
 
-          <div class="profile-editor" [formGroup]="profileForm">
+          <div class="zone-profile-summary">
+            <div>
+              <span>Pflanzen</span>
+              <strong>{{ PLANT_TYPE_LABELS[profileForm.controls.plantType.value] }}</strong>
+            </div>
+            <div>
+              <span>Lage</span>
+              <strong>{{ SUN_EXPOSURE_LABELS[profileForm.controls.sunExposure.value] }}</strong>
+            </div>
+            <div>
+              <span>Wasserbedarf</span>
+              <strong>{{ WATER_NEED_LABELS[profileForm.controls.waterNeedLevel.value] }}</strong>
+            </div>
+            <div>
+              <span>Bevorzugt</span>
+              <strong>{{ TIME_WINDOW_LABELS[profileForm.controls.preferredTimeWindow.value] }}</strong>
+            </div>
+          </div>
+          <div class="toolbar">
+            <button class="button button-subtle" type="button" (click)="assistantStep.set('describe')">Beschreibung ändern</button>
+            <button class="button" type="button" (click)="assistantStep.set('automation')">Weiter zur Automatik</button>
+          </div>
+
+          <div class="profile-editor" [formGroup]="profileForm" *ngIf="expertMode()">
             <label class="field" title="Grundkategorie der Fläche. Beeinflusst Regenanrechnung, Gefäßfaktor und typische Bewässerungsfrequenz.">
               <span>Zonentyp</span>
               <select formControlName="zoneType">
@@ -226,7 +302,9 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
               </select>
             </label>
           </div>
+          </ng-container>
 
+          <ng-container *ngIf="assistantStep() === 'automation'">
           <app-expert-section [enabled]="expertMode()" title="Expertenwerte des Zonenprofils">
             <div class="form-grid form-grid-balanced" [formGroup]="profileForm">
               <label class="field field-span-3" title="Täglicher Grundbedarf in Millimeter. Aus diesem Wert wird der Laufzeitfaktor für automatische Zeitpläne abgeleitet.">
@@ -256,19 +334,21 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
           <div class="adaptive-plan-panel" [formGroup]="planForm">
             <div class="section-head">
               <div>
-                <h3>Adaptiver KI-Zeitplan</h3>
-                <p class="muted">Die KI schlägt Regeln vor. Aktiv werden sie erst, wenn du den adaptiven Modus speicherst.</p>
+                <h3>Automatik</h3>
+                <p class="muted">Statisch folgt festen Uhrzeiten. KI-adaptiv nutzt Zeitfenster, Wetter und Zonenprofil und verschiebt Läufe automatisch hinter manuelle Regeln.</p>
               </div>
-              <button class="button secondary" type="button" (click)="suggestAdaptivePlan()" [disabled]="assistantBusy()">Regeln vorschlagen</button>
             </div>
 
-            <label class="field" title="Static nutzt die bisherigen Zeitpläne unverändert. Adaptive erzeugt automatische Läufe aus Profil, Wetter und diesen Regeln.">
-              <span>Automatikmodus</span>
-              <select formControlName="scheduling_mode">
-                <option value="static">Statische Zeitpläne verwenden</option>
-                <option value="adaptive">KI-adaptiven Zeitplan verwenden</option>
-              </select>
-            </label>
+            <div class="automation-mode-grid">
+              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'static'" (click)="planForm.controls.scheduling_mode.setValue('static')">
+                <strong>Feste Zeitpläne</strong>
+                <span>Die Regeln im Tab Zeitpläne bestimmen Uhrzeit und Dauer. Wetter kann Läufe nur überspringen oder leicht anpassen.</span>
+              </button>
+              <button class="automation-mode-card" type="button" [class.active]="planForm.controls.scheduling_mode.value === 'adaptive'" (click)="planForm.controls.scheduling_mode.setValue('adaptive')">
+                <strong>KI-adaptiv</strong>
+                <span>Die Zone nutzt ein Zeitfenster. Bedarf, Wetter, Mindestabstand und andere Zonen bestimmen die konkrete Uhrzeit und Dauer.</span>
+              </button>
+            </div>
 
             <div class="assistant-suggestion" *ngIf="planSuggestion() as suggestion">
               <strong>Regelvorschlag</strong>
@@ -281,7 +361,26 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
               </div>
             </div>
 
-            <div class="profile-editor">
+            <div class="adaptive-plan-summary">
+              <div>
+                <span>Modus</span>
+                <strong>{{ planForm.controls.scheduling_mode.value === 'adaptive' ? 'KI-adaptiv' : 'Statisch' }}</strong>
+              </div>
+              <div>
+                <span>Zeitfenster</span>
+                <strong>{{ TIME_WINDOW_LABELS[planForm.controls.preferredTimeWindow.value] }}</strong>
+              </div>
+              <div>
+                <span>Laufzeit</span>
+                <strong>{{ planForm.controls.minDurationMinutes.value }}-{{ planForm.controls.maxDurationMinutes.value }} min</strong>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="button button-subtle" type="button" (click)="suggestAdaptivePlan()" [disabled]="assistantBusy()">KI-Regeln vorschlagen</button>
+              <button class="button button-subtle" type="button" (click)="assistantStep.set('profile')">Profil prüfen</button>
+            </div>
+
+            <div class="profile-editor" *ngIf="expertMode()">
               <label class="field" title="Bewässerungsart beeinflusst, ob Mittag grundsätzlich vermieden wird. Bei Sprengern wird Mittag vermieden, Tröpfchen ist flexibler.">
                 <span>Bewässerungsart</span>
                 <select formControlName="irrigationMethod">
@@ -359,6 +458,7 @@ type RecordingTarget = 'zoneDescription' | 'adjustmentInstruction';
               </div>
             </app-expert-section>
           </div>
+          </ng-container>
         </div>
 
         <app-expert-section [enabled]="expertMode()" title="Hardware und Expertenoptionen">
@@ -437,6 +537,8 @@ export class ZonesComponent {
   readonly feedback = signal('');
   readonly feedbackKind = signal<'success' | 'warning'>('success');
   readonly assistantBusy = signal(false);
+  readonly assistantBusyText = signal('');
+  readonly assistantStep = signal<AssistantStep>('describe');
   readonly recording = signal(false);
   readonly recordingTarget = signal<RecordingTarget | null>(null);
   readonly adjustmentInstruction = signal('');
@@ -444,6 +546,7 @@ export class ZonesComponent {
   readonly planSuggestion = signal<ZoneAdaptivePlanResponse | null>(null);
   readonly minutes = signal<Record<number, number>>({});
   readonly showForm = signal(false);
+  readonly areaEditing = signal(false);
   selectedArea: Zone | null = null;
   private mediaRecorder?: MediaRecorder;
   private audioChunks: Blob[] = [];
@@ -518,6 +621,10 @@ export class ZonesComponent {
   readonly baseWaterLabel = baseWaterLabel;
   readonly formatMm = formatMm;
   readonly diffLabel = diffLabel;
+  readonly PLANT_TYPE_LABELS = PLANT_TYPE_LABELS;
+  readonly SUN_EXPOSURE_LABELS = SUN_EXPOSURE_LABELS;
+  readonly WATER_NEED_LABELS = WATER_NEED_LABELS;
+  readonly TIME_WINDOW_LABELS = TIME_WINDOW_LABELS;
 
   constructor() {
     combineLatest([this.vm$, this.route.queryParamMap])
@@ -555,7 +662,9 @@ export class ZonesComponent {
   openCreateForm(): void {
     this.selectedArea = null;
     this.showForm.set(true);
+    this.areaEditing.set(true);
     this.resetFormState(false);
+    this.assistantStep.set('describe');
     this.clearZoneRouteParam();
     requestAnimationFrame(() => {
       this.areaFormPanel?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -565,6 +674,7 @@ export class ZonesComponent {
   editArea(area: Zone, updateRoute = true): void {
     this.selectedArea = area;
     this.showForm.set(true);
+    this.areaEditing.set(false);
     if (updateRoute) {
       void this.router.navigate(['/areas'], { queryParams: { zoneId: area.id }, replaceUrl: true });
     }
@@ -586,6 +696,7 @@ export class ZonesComponent {
     this.profileSuggestion.set(null);
     this.planSuggestion.set(null);
     this.adjustmentInstruction.set('');
+    this.assistantStep.set('profile');
     requestAnimationFrame(() => {
       this.areaFormPanel?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -597,6 +708,7 @@ export class ZonesComponent {
 
   private resetFormState(closeForm: boolean): void {
     this.selectedArea = null;
+    this.areaEditing.set(false);
     this.form.reset({
       name: '',
       description: '',
@@ -615,6 +727,7 @@ export class ZonesComponent {
     this.profileSuggestion.set(null);
     this.planSuggestion.set(null);
     this.adjustmentInstruction.set('');
+    this.assistantStep.set('describe');
     if (closeForm) {
       this.showForm.set(false);
       this.clearZoneRouteParam();
@@ -627,17 +740,18 @@ export class ZonesComponent {
       this.setFeedback('Bitte beschreibe die Zone etwas genauer.', 'warning');
       return;
     }
-    this.assistantBusy.set(true);
+    this.startAssistantWork('KI-Vorschlag wird erstellt...');
     this.api.suggestZoneProfile({ description, current_profile: this.currentProfile() })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (suggestion) => {
           this.profileSuggestion.set(suggestion);
-          this.assistantBusy.set(false);
+          this.assistantStep.set('profile');
+          this.stopAssistantWork();
         },
         error: (error) => {
           this.setFeedback(this.apiErrorMessage(error, 'Der KI-Vorschlag konnte nicht erzeugt werden.'), 'warning');
-          this.assistantBusy.set(false);
+          this.stopAssistantWork();
         },
       });
   }
@@ -646,7 +760,7 @@ export class ZonesComponent {
     if (!this.selectedArea) {
       return;
     }
-    this.assistantBusy.set(true);
+    this.startAssistantWork('KI-Anpassung wird berechnet...');
     this.api.adjustZoneProfile(this.selectedArea.id, {
       instruction: this.adjustmentInstruction(),
       description: this.form.controls.zone_profile_description.value,
@@ -656,11 +770,12 @@ export class ZonesComponent {
       .subscribe({
         next: (suggestion) => {
           this.profileSuggestion.set(suggestion);
-          this.assistantBusy.set(false);
+          this.assistantStep.set('profile');
+          this.stopAssistantWork();
         },
         error: (error) => {
           this.setFeedback(this.apiErrorMessage(error, 'Die KI-Anpassung konnte nicht erzeugt werden.'), 'warning');
-          this.assistantBusy.set(false);
+          this.stopAssistantWork();
         },
       });
   }
@@ -672,6 +787,7 @@ export class ZonesComponent {
     }
     this.patchProfile(suggestion.profile);
     this.profileSuggestion.set(null);
+    this.assistantStep.set('automation');
     this.setFeedback('Vorschlag übernommen. Speichere den Bereich, damit die Werte aktiv werden.');
   }
 
@@ -680,7 +796,7 @@ export class ZonesComponent {
   }
 
   suggestAdaptivePlan(): void {
-    this.assistantBusy.set(true);
+    this.startAssistantWork('Adaptive Regeln werden erstellt...');
     this.api.suggestAdaptivePlan({
       description: this.form.controls.zone_profile_description.value || this.form.controls.description.value,
       profile: this.currentProfile(),
@@ -688,11 +804,11 @@ export class ZonesComponent {
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (suggestion) => {
         this.planSuggestion.set(suggestion);
-        this.assistantBusy.set(false);
+        this.stopAssistantWork();
       },
       error: (error) => {
         this.setFeedback(this.apiErrorMessage(error, 'Der adaptive Regelvorschlag konnte nicht erzeugt werden.'), 'warning');
-        this.assistantBusy.set(false);
+        this.stopAssistantWork();
       },
     });
   }
@@ -704,6 +820,7 @@ export class ZonesComponent {
     }
     this.patchPlan('adaptive', suggestion.plan);
     this.planSuggestion.set(null);
+    this.assistantStep.set('automation');
     this.setFeedback('Adaptive Regeln übernommen. Speichere den Bereich, damit der KI-Modus aktiv wird.');
   }
 
@@ -846,7 +963,7 @@ export class ZonesComponent {
     if (!this.audioChunks.length) {
       return;
     }
-    this.assistantBusy.set(true);
+    this.startAssistantWork('Sprachaufnahme wird transkribiert...');
     const blob = new Blob(this.audioChunks, { type: this.audioChunks[0]?.type || 'audio/webm' });
     const base64 = await this.blobToBase64(blob);
     this.api.transcribeZoneAudio({
@@ -857,13 +974,17 @@ export class ZonesComponent {
       next: ({ text }) => {
         this.applyTranscription(target, text);
         this.setFeedback('Sprachtext übernommen.');
-        this.assistantBusy.set(false);
+        this.stopAssistantWork();
       },
       error: (error) => {
         this.setFeedback(this.apiErrorMessage(error, 'Die Sprachaufnahme konnte nicht transkribiert werden.'), 'warning');
-        this.assistantBusy.set(false);
+        this.stopAssistantWork();
       },
     });
+  }
+
+  hasProfileInput(): boolean {
+    return this.form.controls.zone_profile_description.value.trim().length > 0 || !!this.selectedArea;
   }
 
   private applyTranscription(target: RecordingTarget | null, text: string): void {
@@ -916,6 +1037,16 @@ export class ZonesComponent {
   private setFeedback(message: string, kind: 'success' | 'warning' = 'success'): void {
     this.feedbackKind.set(kind);
     this.feedback.set(message);
+  }
+
+  private startAssistantWork(message: string): void {
+    this.assistantBusyText.set(message);
+    this.assistantBusy.set(true);
+  }
+
+  private stopAssistantWork(): void {
+    this.assistantBusy.set(false);
+    this.assistantBusyText.set('');
   }
 
   private apiErrorMessage(error: unknown, fallback: string): string {

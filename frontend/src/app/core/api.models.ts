@@ -133,6 +133,28 @@ export interface Schedule {
   weather_precipitation_mm_threshold?: number | null;
 }
 
+export interface IrrigationProjectionItem {
+  zone_id: number;
+  zone_name: string;
+  schedule_id?: number | null;
+  source: 'manual_rule' | 'adaptive_rule';
+  status: 'planned' | 'skipped' | 'blocked';
+  planned_start: string;
+  planned_end: string;
+  original_start: string;
+  duration_minutes: number;
+  reason: string;
+  weather_summary?: string | null;
+  adjusted_for_sequence: boolean;
+}
+
+export interface IrrigationProjection {
+  generated_at: string;
+  days: number;
+  weather_source_status: 'fresh' | 'stale' | 'unavailable';
+  items: IrrigationProjectionItem[];
+}
+
 export interface WeatherDecision {
   id: number;
   decision: string;

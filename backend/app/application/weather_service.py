@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.domain.policies import WeatherPolicyInput, WeatherPolicyResult, evaluate_weather_policy
-from app.infrastructure.db.orm import AppSetting, Schedule, WeatherDecision, Zone
+from app.infrastructure.db.orm import AppSetting, Schedule, WeatherDecision, WeatherForecastCache, Zone
 from app.infrastructure.db.repositories import AppSettingRepository
 from app.infrastructure.weather.open_meteo_client import OpenMeteoClient, WeatherForecastSummary
 
@@ -73,7 +74,7 @@ class WeatherService:
         )
 
         try:
-            summary = self.client.fetch_forecast(
+            summary = self.fetch_forecast_cached(
                 latitude=app_settings.latitude,
                 longitude=app_settings.longitude,
                 hours=app_settings.weather_window_hours,
@@ -105,13 +106,48 @@ class WeatherService:
 
     def try_fetch_current_summary(self, *, app_settings: AppSetting) -> WeatherForecastSummary | None:
         try:
-            return self.client.fetch_forecast(
+            return self.fetch_forecast_cached(
                 latitude=app_settings.latitude,
                 longitude=app_settings.longitude,
                 hours=app_settings.weather_window_hours,
             )
         except Exception:  # noqa: BLE001
             return None
+
+    def fetch_forecast_cached(self, *, latitude: float, longitude: float, hours: int) -> WeatherForecastSummary:
+        key = self._cache_key(latitude=latitude, longitude=longitude, hours=hours)
+        now = datetime.now(UTC)
+        cached = self.session.scalar(select(WeatherForecastCache).where(WeatherForecastCache.cache_key == key))
+        if cached and self._as_aware(cached.fetched_at) >= now - timedelta(minutes=self.settings.weather_cache_ttl_minutes):
+            return self._summary_from_cache(cached.summary_json)
+
+        try:
+            summary = self.client.fetch_forecast(latitude=latitude, longitude=longitude, hours=hours)
+        except Exception:
+            if cached and self._as_aware(cached.fetched_at) >= now - timedelta(hours=self.settings.weather_cache_stale_fallback_hours):
+                return self._summary_from_cache(cached.summary_json)
+            raise
+
+        payload = self._summary_to_cache(summary)
+        if cached:
+            cached.summary_json = payload
+            cached.fetched_at = now
+            cached.latitude = latitude
+            cached.longitude = longitude
+            cached.forecast_window_hours = hours
+        else:
+            self.session.add(
+                WeatherForecastCache(
+                    cache_key=key,
+                    latitude=latitude,
+                    longitude=longitude,
+                    forecast_window_hours=hours,
+                    summary_json=payload,
+                    fetched_at=now,
+                )
+            )
+        self.session.flush()
+        return summary
 
     def build_live_overview(
         self,
@@ -135,10 +171,11 @@ class WeatherService:
         )
         checked_at = datetime.now(UTC)
         raw_reason = policy.reason if forecast_summary else "weather api error: live forecast unavailable"
+        display_decision = policy.decision if forecast_summary else "error"
         return self.build_overview(
             app_settings=app_settings,
             weather_enabled=weather_enabled,
-            decision=policy.decision,
+            decision=display_decision,
             raw_reason=raw_reason,
             checked_at=checked_at,
             probability_max=forecast_summary.probability_max if forecast_summary else None,
@@ -176,8 +213,8 @@ class WeatherService:
             )
         if raw_reason and raw_reason.startswith("weather api error:"):
             if fail_mode == "deny":
-                return "Wetterdaten fehlen. Wegen der Einstellung „Nicht bewässern“ wird der Lauf sicherheitshalber nicht gestartet."
-            return "Wetterdaten fehlen, die Anlage würde wegen der aktuellen Einstellung trotzdem bewässern."
+                return "Wetterdaten konnten wegen eines API-Fehlers nicht abgerufen werden. Wegen der Einstellung „Nicht bewässern“ wird der Lauf sicherheitshalber nicht gestartet."
+            return "Wetterdaten konnten wegen eines API-Fehlers nicht abgerufen werden. Wegen der aktuellen Einstellung würde die Anlage trotzdem bewässern."
         if raw_reason and raw_reason.startswith("weather api error overridden:"):
             return "Wetterdaten fehlen. Wegen der Einstellung „Trotzdem bewässern“ wurde der Lauf freigegeben."
         if decision == "allow":
@@ -189,6 +226,44 @@ class WeatherService:
         if decision == "error":
             return "Wetterdaten konnten nicht geprüft werden."
         return "Für diesen Bereich liegt noch keine Wetterentscheidung vor."
+
+    @staticmethod
+    def _cache_key(*, latitude: float, longitude: float, hours: int) -> str:
+        return f"{latitude:.4f}:{longitude:.4f}:{hours}"
+
+    @staticmethod
+    def _as_aware(value: datetime) -> datetime:
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+    @staticmethod
+    def _summary_to_cache(summary: WeatherForecastSummary) -> dict:
+        return {
+            "probability_max": summary.probability_max,
+            "precipitation_sum_mm": summary.precipitation_sum_mm,
+            "current_weather_code": summary.current_weather_code,
+            "current_is_day": summary.current_is_day,
+            "current_temperature_c": summary.current_temperature_c,
+            "temperature_max_24h_c": summary.temperature_max_24h_c,
+            "precipitation_last_24h_mm": summary.precipitation_last_24h_mm,
+            "precipitation_next_24h_mm": summary.precipitation_next_24h_mm,
+            "cloud_cover_avg_pct": summary.cloud_cover_avg_pct,
+            "raw_response": summary.raw_response,
+        }
+
+    @staticmethod
+    def _summary_from_cache(payload: dict) -> WeatherForecastSummary:
+        return WeatherForecastSummary(
+            probability_max=payload.get("probability_max"),
+            precipitation_sum_mm=payload.get("precipitation_sum_mm"),
+            current_weather_code=payload.get("current_weather_code"),
+            current_is_day=payload.get("current_is_day"),
+            current_temperature_c=payload.get("current_temperature_c"),
+            temperature_max_24h_c=payload.get("temperature_max_24h_c"),
+            precipitation_last_24h_mm=payload.get("precipitation_last_24h_mm"),
+            precipitation_next_24h_mm=payload.get("precipitation_next_24h_mm"),
+            cloud_cover_avg_pct=payload.get("cloud_cover_avg_pct"),
+            raw_response=payload.get("raw_response") or {},
+        )
 
     def build_overview(
         self,
@@ -217,6 +292,8 @@ class WeatherService:
             checked_at=checked_at,
         )
         source_status = self._source_status(checked_at=checked_at, weather_enabled=weather_enabled)
+        if raw_reason and raw_reason.startswith("weather api error:"):
+            source_status = "unavailable"
         reason_human = self.humanize_reason(
             decision=normalized_decision,
             raw_reason=raw_reason,

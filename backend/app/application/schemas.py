@@ -217,6 +217,28 @@ class ScheduleResponse(BaseModel):
     updated_at: datetime
 
 
+class IrrigationProjectionItem(BaseModel):
+    zone_id: int
+    zone_name: str
+    schedule_id: int | None = None
+    source: Literal["manual_rule", "adaptive_rule"]
+    status: Literal["planned", "skipped", "blocked"]
+    planned_start: datetime
+    planned_end: datetime
+    original_start: datetime
+    duration_minutes: int
+    reason: str
+    weather_summary: str | None = None
+    adjusted_for_sequence: bool = False
+
+
+class IrrigationProjectionResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    weather_source_status: WeatherOverviewSourceStatus
+    items: list[IrrigationProjectionItem]
+
+
 class ManualRunCreate(BaseModel):
     duration_minutes: int = Field(default=5, ge=1, le=240)
     reason: str | None = None

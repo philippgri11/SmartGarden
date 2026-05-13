@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     weather_default_window_hours: int = 6
     weather_default_probability_threshold: int = 70
     weather_default_precipitation_mm_threshold: float = 2.0
+    weather_cache_ttl_minutes: int = 30
+    weather_cache_stale_fallback_hours: int = 24
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4.1-mini"
@@ -46,7 +48,7 @@ class Settings(BaseSettings):
     scheduler_default_run_timeout_minutes: int = 60
     scheduler_lock_key: int = 420420
 
-    max_global_concurrent_runs: int = 4
+    max_global_concurrent_runs: int = 1
 
     default_latitude: float = 52.52
     default_longitude: float = 13.405

@@ -28,7 +28,14 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
         <label class="field field-span-2">
           <span>PLZ</span>
           <input formControlName="postal_code" placeholder="z. B. 10115" />
+          <small class="muted">Optional für deine Orientierung. Die Wetterdaten nutzen die Koordinaten.</small>
         </label>
+        <div class="field field-span-2">
+          <span>Standort</span>
+          <button class="button button-subtle" type="button" (click)="useBrowserLocation()" [disabled]="locating()">
+            {{ locating() ? 'GPS wird gelesen...' : 'Per GPS ermitteln' }}
+          </button>
+        </div>
         <label class="field field-span-2">
           <span>Wettersteuerung aktiv</span>
           <select formControlName="weather_enabled">
@@ -75,6 +82,7 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
         </div>
       </form>
       <p class="notice success" *ngIf="feedback()">{{ feedback() }}</p>
+      <p class="notice warning" *ngIf="locationError()">{{ locationError() }}</p>
     </section>
 
     <section #winterSection class="panel">
@@ -146,6 +154,8 @@ export class SettingsComponent {
 
   readonly expertMode = computed(() => this.preferences.expertMode());
   readonly feedback = signal('');
+  readonly locating = signal(false);
+  readonly locationError = signal('');
 
   readonly form = this.fb.nonNullable.group({
     location_name: ['Mein Garten', Validators.required],
@@ -203,6 +213,30 @@ export class SettingsComponent {
       this.patchSettings(settings);
       this.feedback.set(active ? 'Winterbetrieb aktiviert.' : 'Winterbetrieb beendet.');
     });
+  }
+
+  useBrowserLocation(): void {
+    this.locationError.set('');
+    if (!navigator.geolocation) {
+      this.locationError.set('Dieser Browser unterstützt keine Standortermittlung.');
+      return;
+    }
+    this.locating.set(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        this.form.patchValue({
+          latitude: Number(position.coords.latitude.toFixed(5)),
+          longitude: Number(position.coords.longitude.toFixed(5)),
+        });
+        this.feedback.set('GPS-Koordinaten übernommen. Speichere die Einstellungen, damit die Wettersteuerung sie nutzt.');
+        this.locating.set(false);
+      },
+      () => {
+        this.locationError.set('Standort konnte nicht ermittelt werden. Du kannst PLZ oder Koordinaten weiter manuell eintragen.');
+        this.locating.set(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 30 * 60 * 1000 }
+    );
   }
 
   private patchSettings(settings: AppSettings): void {

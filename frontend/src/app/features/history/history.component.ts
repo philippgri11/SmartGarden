@@ -135,15 +135,21 @@ export class HistoryComponent {
     return `Für ${zone} wurde ein Lauf vorbereitet.`;
   }
 
-  statusForRun(run: WateringRun): 'active' | 'paused' | 'error' | 'watering' {
+  statusForRun(run: WateringRun): 'completed' | 'skipped' | 'cancelled' | 'error' | 'watering' | 'active' {
     if (run.status === 'failed') {
       return 'error';
     }
     if (run.status === 'running') {
       return 'watering';
     }
-    if (run.status === 'skipped' || run.status === 'cancelled') {
-      return 'paused';
+    if (run.status === 'completed') {
+      return 'completed';
+    }
+    if (run.status === 'skipped') {
+      return 'skipped';
+    }
+    if (run.status === 'cancelled') {
+      return 'cancelled';
     }
     return 'active';
   }

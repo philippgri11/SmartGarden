@@ -18,7 +18,10 @@ export class AreaStatusBadgeComponent {
     | 'ok'
     | 'running'
     | 'winter'
-    | 'attention' = 'ok';
+    | 'attention'
+    | 'completed'
+    | 'skipped'
+    | 'cancelled' = 'ok';
 
   get label(): string {
     switch (this.status) {
@@ -30,6 +33,12 @@ export class AreaStatusBadgeComponent {
       case 'watering':
       case 'running':
         return 'Läuft';
+      case 'completed':
+        return 'Bewässert';
+      case 'skipped':
+        return 'Ausgesetzt';
+      case 'cancelled':
+        return 'Gestoppt';
       case 'scheduled-soon':
         return 'Bald geplant';
       case 'paused':

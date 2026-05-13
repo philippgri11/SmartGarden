@@ -103,6 +103,19 @@ class WeatherDecision(Base):
     watering_run: Mapped["WateringRun"] = relationship(back_populates="weather_decisions")
 
 
+class WeatherForecastCache(Base):
+    __tablename__ = "weather_forecast_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cache_key: Mapped[str] = mapped_column(String(180), nullable=False, unique=True)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    forecast_window_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

@@ -7,6 +7,7 @@ import {
   GardenMap,
   GardenMapView,
   GpioEvent,
+  IrrigationProjection,
   PauseSystemPayload,
   RunAllAreasResponse,
   RuntimeSnapshot,
@@ -105,6 +106,10 @@ export class ApiService {
 
   getSchedules(): Observable<Schedule[]> {
     return this.http.get<Schedule[]>(`${this.baseUrl}/schedules`);
+  }
+
+  getIrrigationProjection(days = 7): Observable<IrrigationProjection> {
+    return this.http.get<IrrigationProjection>(`${this.baseUrl}/schedules/projection`, { params: { days } });
   }
 
   createSchedule(payload: Partial<Schedule>): Observable<Schedule> {

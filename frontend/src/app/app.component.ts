@@ -69,6 +69,7 @@ export class AppComponent implements OnInit {
     { path: '/garden-map', label: 'Gartenkarte' },
     { path: '/areas', label: 'Bereiche' },
     { path: '/schedules', label: 'Zeitpläne' },
+    { path: '/planning', label: 'Planung' },
     { path: '/history', label: 'Verlauf' },
     { path: '/settings', label: 'Einstellungen' },
   ];

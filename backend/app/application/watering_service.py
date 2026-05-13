@@ -203,14 +203,19 @@ class WateringService:
             .order_by(orm.WateringRun.created_at.asc())
             .all()
         )
+        now = datetime.now(UTC)
         for run in planned_runs:
+            if run.scheduled_for and run.scheduled_time:
+                scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=UTC)
+                if scheduled_at > now:
+                    continue
             zone = self.zones.get(run.zone_id)
             if not zone or not zone.active:
                 run.status = RunStatus.SKIPPED.value
                 run.reason = "zone inactive or missing"
-                run.finished_at = datetime.now(UTC)
+                run.finished_at = now
                 continue
-            if len(currently_running_zone_ids) >= self.settings.max_global_concurrent_runs:
+            if currently_running_zone_ids or len(currently_running_zone_ids) >= self.settings.max_global_concurrent_runs:
                 break
             if run.zone_id in currently_running_zone_ids:
                 continue

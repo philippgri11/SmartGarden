@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.application.irrigation_projection_service import IrrigationProjectionService
 from app.application.weather_service import WeatherService
 from app.application.watering_service import WateringService
 from app.config import Settings
 from app.domain.models import RunStatus
-from app.domain.services import next_schedule_occurrence
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, WateringRunRepository, ZoneRepository
 
@@ -51,6 +51,12 @@ class RuntimeService:
         )
         zones = self.zones.list()
         runs_by_zone = self._load_runs_by_zone([zone.id for zone in zones])
+        projection = IrrigationProjectionService(self.session, self.settings).build_projection(days=14, now=current_time)
+        next_by_zone: dict[int, datetime] = {}
+        for item in projection.items:
+            if item.status != "planned" or item.zone_id in next_by_zone:
+                continue
+            next_by_zone[item.zone_id] = item.planned_start
 
         return [
             self._build_area_snapshot(
@@ -59,6 +65,7 @@ class RuntimeService:
                 app_settings=current_settings,
                 now=current_time,
                 current_forecast=current_forecast,
+                next_watering_at=next_by_zone.get(zone.id),
             )
             for zone in zones
         ]
@@ -79,6 +86,7 @@ class RuntimeService:
         app_settings: orm.AppSetting,
         now: datetime,
         current_forecast,
+        next_watering_at: datetime | None,
     ) -> dict:
         current_run = next((run for run in zone_runs if run.status in {RunStatus.PLANNED.value, RunStatus.RUNNING.value}), None)
         last_finished_run = next((run for run in zone_runs if run.status not in {RunStatus.PLANNED.value, RunStatus.RUNNING.value}), None)
@@ -86,18 +94,6 @@ class RuntimeService:
         effective_precipitation_threshold = zone.weather_precipitation_mm_threshold or app_settings.weather_precipitation_mm_threshold
         schedule_weather_enabled = any(schedule.active and schedule.weather_enabled for schedule in zone.schedules)
         weather_enabled_effective = bool(app_settings.weather_enabled and (zone.weather_enabled or schedule_weather_enabled or zone.scheduling_mode == "adaptive"))
-
-        next_candidates = [
-            next_schedule_occurrence(schedule, now)
-            for schedule in zone.schedules
-            if schedule.active and zone.scheduling_mode == "static"
-        ]
-        next_candidates = [candidate for candidate in next_candidates if candidate is not None]
-        if zone.scheduling_mode == "adaptive" and zone.adaptive_irrigation_plan_json:
-            adaptive_next = self._next_adaptive_occurrence(zone=zone, now=now)
-            if adaptive_next is not None:
-                next_candidates.append(adaptive_next)
-        next_watering_at = min(next_candidates) if next_candidates else None
 
         run_state = self._derive_run_state(current_run)
         status = self._derive_area_status(
@@ -181,20 +177,13 @@ class RuntimeService:
     def _build_summary(self, *, app_settings: orm.AppSetting, areas: list[dict], now: datetime, manual_sequence: dict | None) -> dict:
         active_schedules = self.schedules.list_active()
         active_schedule_count = 0
-        next_candidates: list[datetime] = []
         for schedule in active_schedules:
             zone = next((item for item in areas if item["id"] == schedule.zone_id), None)
             if not zone or not zone["active"] or zone.get("scheduling_mode") == "adaptive":
                 continue
             active_schedule_count += 1
-            occurrence = next_schedule_occurrence(schedule, now)
-            if occurrence is not None:
-                next_candidates.append(occurrence)
-
+        next_candidates = [area.get("next_watering_at") for area in areas if area.get("next_watering_at")]
         next_watering_at = min(next_candidates) if next_candidates else None
-        adaptive_next_candidates = [area.get("next_watering_at") for area in areas if area.get("scheduling_mode") == "adaptive" and area.get("next_watering_at")]
-        if adaptive_next_candidates:
-            next_watering_at = min([candidate for candidate in [next_watering_at, *adaptive_next_candidates] if candidate is not None])
         last_area = next(
             (area for area in sorted(areas, key=lambda item: item["last_watering_at"] or datetime.min.replace(tzinfo=UTC), reverse=True) if area["last_watering_at"]),
             None,
@@ -330,14 +319,6 @@ class RuntimeService:
         for run in runs:
             grouped[run.zone_id].append(run)
         return grouped
-
-    def _next_adaptive_occurrence(self, *, zone: orm.Zone, now: datetime) -> datetime | None:
-        from app.domain.adaptive_irrigation import next_adaptive_slot
-
-        try:
-            return next_adaptive_slot(zone.adaptive_irrigation_plan_json or {}, now=now)
-        except Exception:  # noqa: BLE001
-            return None
 
     @staticmethod
     def _derive_run_state(current_run: orm.WateringRun | None) -> str:

@@ -73,3 +73,28 @@ def next_schedule_occurrence(schedule: orm.Schedule, now: datetime, days_ahead: 
         if scheduled_dt > base:
             return scheduled_dt
     return None
+
+
+def schedule_occurrences(schedule: orm.Schedule, *, start: datetime, days: int) -> list[datetime]:
+    weekdays = parse_weekdays(schedule.weekdays)
+    base = start if start.tzinfo else start.replace(tzinfo=UTC)
+    occurrences: list[datetime] = []
+    for day_offset in range(days + 1):
+        candidate_date = (base + timedelta(days=day_offset)).date()
+        weekday_name = WEEKDAY_NAMES[candidate_date.weekday()]
+        if weekday_name not in weekdays:
+            continue
+
+        if schedule.interval_hours and schedule.window_start and schedule.window_end:
+            cursor = datetime.combine(candidate_date, schedule.window_start, tzinfo=base.tzinfo)
+            end = datetime.combine(candidate_date, schedule.window_end, tzinfo=base.tzinfo)
+            while cursor <= end:
+                if cursor >= base:
+                    occurrences.append(cursor)
+                cursor += timedelta(hours=schedule.interval_hours)
+            continue
+
+        scheduled_dt = datetime.combine(candidate_date, schedule.start_time, tzinfo=base.tzinfo)
+        if scheduled_dt >= base:
+            occurrences.append(scheduled_dt)
+    return occurrences

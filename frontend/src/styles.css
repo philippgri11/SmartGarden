@@ -176,6 +176,10 @@ button {
   min-width: 0;
 }
 
+.compact-action-panel {
+  padding: 14px 18px;
+}
+
 app-expert-section {
   display: block;
 }
@@ -244,6 +248,13 @@ app-expert-section {
   border: 1px solid var(--border);
 }
 
+.button.button-subtle {
+  background: var(--surface-strong);
+  color: var(--primary-strong);
+  border: 1px solid rgba(31, 122, 77, 0.22);
+  padding: 9px 14px;
+}
+
 .button.danger {
   background: var(--danger);
 }
@@ -296,6 +307,19 @@ app-expert-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.info-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .field input,
@@ -378,6 +402,168 @@ app-expert-section {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.assistant-flow,
+.zone-profile-summary,
+.adaptive-plan-summary,
+.planning-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.assistant-step,
+.zone-profile-summary > div,
+.adaptive-plan-summary > div,
+.planning-summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-strong);
+  color: var(--text);
+  text-align: left;
+}
+
+.assistant-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(31, 122, 77, 0.12);
+  color: var(--primary-strong);
+  font-weight: 800;
+}
+
+.assistant-step.active {
+  border-color: rgba(31, 122, 77, 0.36);
+  background: rgba(31, 122, 77, 0.08);
+}
+
+.assistant-step:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.assistant-step small,
+.zone-profile-summary span,
+.adaptive-plan-summary span,
+.planning-summary span {
+  color: var(--muted);
+}
+
+.zone-profile-summary strong,
+.adaptive-plan-summary strong,
+.planning-summary strong {
+  line-height: 1.25;
+}
+
+.assistant-progress {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(43, 105, 216, 0.08);
+  border: 1px solid rgba(43, 105, 216, 0.16);
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid rgba(43, 105, 216, 0.18);
+  border-top-color: var(--info);
+  animation: spin 0.8s linear infinite;
+}
+
+.progress-bar {
+  height: 6px;
+  overflow: hidden;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(43, 105, 216, 0.12);
+}
+
+.progress-bar span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--info);
+  animation: progress-slide 1.3s ease-in-out infinite;
+}
+
+.automation-mode-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.automation-mode-card {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+  justify-content: start;
+  min-height: 130px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  text-align: left;
+}
+
+.automation-mode-card.active {
+  border-color: rgba(31, 122, 77, 0.42);
+  background: rgba(31, 122, 77, 0.08);
+}
+
+.automation-mode-card span {
+  color: var(--muted);
+}
+
+.view-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: end;
+  margin-top: 18px;
+}
+
+.view-summary > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-soft);
+}
+
+.view-summary span {
+  color: var(--muted);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(90%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
 }
 
 .assistant-suggestion {
@@ -534,8 +720,28 @@ app-expert-section {
   background: rgba(31, 122, 77, 0.08);
 }
 
+.area-profile-compact {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.area-profile-compact-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.area-profile-compact-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .status-active,
-.status-ok {
+.status-ok,
+.status-completed {
   background: rgba(47, 125, 75, 0.16);
   color: var(--primary-strong);
 }
@@ -553,7 +759,9 @@ app-expert-section {
 }
 
 .status-paused,
-.status-scheduled-soon {
+.status-scheduled-soon,
+.status-skipped,
+.status-cancelled {
   background: rgba(212, 141, 63, 0.16);
   color: #965d20;
 }
@@ -846,6 +1054,30 @@ app-expert-section {
 .scenario-table th {
   color: var(--muted);
   font-weight: 700;
+}
+
+.planning-table-wrap {
+  margin-top: 20px;
+}
+
+.planning-table {
+  min-width: 980px;
+}
+
+.sequence-note {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(43, 105, 216, 0.1);
+  color: var(--info);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.skipped-row {
+  color: var(--muted);
 }
 
 .schedule-card-actions {

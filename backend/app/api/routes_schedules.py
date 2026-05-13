@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db
+from app.api.dependencies import get_app_settings, get_db
+from app.application.irrigation_projection_service import IrrigationProjectionService
 from app.application.schedule_service import ScheduleService
-from app.application.schemas import ScheduleCreate, ScheduleResponse, ScheduleUpdate
+from app.application.schemas import IrrigationProjectionResponse, ScheduleCreate, ScheduleResponse, ScheduleUpdate
+from app.config import Settings
 from app.domain.services import parse_weekdays
 
 
@@ -34,6 +36,15 @@ def list_schedules(db: Session = Depends(get_db)) -> list[ScheduleResponse]:
     return [_to_response(item) for item in ScheduleService(db).list_schedules()]
 
 
+@router.get("/projection", response_model=IrrigationProjectionResponse)
+def irrigation_projection(
+    days: int = 7,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+) -> IrrigationProjectionResponse:
+    return IrrigationProjectionService(db, settings).build_projection(days=days)
+
+
 @router.post("", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
 def create_schedule(payload: ScheduleCreate, db: Session = Depends(get_db)) -> ScheduleResponse:
     try:
@@ -57,4 +68,3 @@ def delete_schedule(schedule_id: int, db: Session = Depends(get_db)) -> Response
     if not deleted:
         raise HTTPException(status_code=404, detail="schedule not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

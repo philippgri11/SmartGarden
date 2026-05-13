@@ -62,9 +62,9 @@ const WEEKDAYS = [
       <p>Lege feste Zeiten an oder prüfe adaptive KI-Regelpläne für Bereiche.</p>
     </section>
 
-    <section class="panel" *ngIf="!showForm()">
+    <section class="panel compact-action-panel" *ngIf="!showForm()">
       <div class="toolbar">
-        <button class="button" type="button" (click)="openCreateForm()">Zeitplan anlegen</button>
+        <button class="button button-subtle" type="button" (click)="openCreateForm()">Zeitplan anlegen</button>
       </div>
     </section>
 
