@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "ng serve --host 0.0.0.0 --port 4200",
-    "build": "ng build",
+    "build": "ng build --output-hashing=all",
     "test": "ng test --watch=false",
     "test:unit": "vitest run"
   },
