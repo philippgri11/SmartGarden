@@ -37,11 +37,15 @@ spec:
               command: ["sh", "-c", "pg_isready -U postgres -d irrigation"]
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U postgres -d irrigation"]
             initialDelaySeconds: 20
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             requests:
               cpu: 100m
@@ -57,4 +61,3 @@ spec:
         resources:
           requests:
             storage: 5Gi
-
