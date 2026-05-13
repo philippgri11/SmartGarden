@@ -11,7 +11,7 @@ k() {
 }
 
 apply_manifest() {
-  k apply -f "$1"
+  k apply --validate=false -f "$1"
 }
 
 apply_deployment_manifest() {
@@ -27,7 +27,7 @@ apply_deployment_manifest() {
   local temp_file
   temp_file="$(mktemp)"
   sed "s#image: ${local_image}#image: ${image}#" "$manifest" > "$temp_file"
-  k apply -f "$temp_file"
+  k apply --validate=false -f "$temp_file"
   rm -f "$temp_file"
 }
 
@@ -55,7 +55,7 @@ apply_manifest "$ROOT_DIR/k8s/namespace.yaml"
 k create secret generic irrigation-secret \
   --namespace irrigation \
   --from-env-file="$secret_env_file" \
-  --dry-run=client -o yaml | k apply -f -
+  --dry-run=client -o yaml | k apply --validate=false -f -
 apply_manifest "$ROOT_DIR/k8s/configmap.yaml"
 apply_manifest "$ROOT_DIR/k8s/postgres-service.yaml"
 apply_manifest "$ROOT_DIR/k8s/postgres-statefulset.yaml"
