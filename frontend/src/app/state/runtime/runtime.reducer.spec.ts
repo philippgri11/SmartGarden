@@ -1,7 +1,112 @@
 import { describe, expect, it } from 'vitest';
 
+import { RuntimeSnapshot, Zone } from '../../core/api.models';
 import { RuntimeActions } from './runtime.actions';
 import { runtimeReducer } from './runtime.reducer';
+
+function testArea(overrides: Partial<Zone> = {}): Zone {
+  return {
+    id: 7,
+    name: 'Testbereich',
+    description: null,
+    gpio_chip: '/dev/gpiochip0',
+    gpio_line: 12,
+    active: true,
+    default_manual_duration_minutes: 5,
+    max_duration_minutes: 10,
+    weather_enabled: false,
+    weather_probability_threshold: null,
+    weather_precipitation_mm_threshold: null,
+    scheduling_mode: 'static',
+    adaptive_irrigation_plan: null,
+    status: 'active',
+    run_state: 'idle',
+    running: false,
+    current_run_id: null,
+    current_run_status: null,
+    current_run_started_at: null,
+    current_run_requested_duration_minutes: null,
+    current_run_remaining_seconds: null,
+    current_run_stop_requested: false,
+    last_known_gpio_state: false,
+    last_gpio_changed_at: null,
+    next_watering_at: null,
+    last_watering_at: null,
+    last_run_status: null,
+    last_weather_decision: null,
+    last_weather_reason: null,
+    weather_decision_effective: false,
+    weather_decision: 'inactive',
+    weather_reason_human: 'Wettersteuerung ist ausgeschaltet.',
+    weather_snapshot: null,
+    manual_start_allowed: true,
+    manual_start_block_reason: null,
+    active_shape_count: 0,
+    ...overrides,
+  };
+}
+
+function testSnapshot(areas: Zone[]): RuntimeSnapshot {
+  return {
+    generated_at: '2026-05-11T08:00:00Z',
+    settings: {
+      location_name: 'Testgarten',
+      postal_code: null,
+      latitude: 52.52,
+      longitude: 13.405,
+      weather_enabled: true,
+      weather_window_hours: 6,
+      weather_probability_threshold: 70,
+      weather_precipitation_mm_threshold: 2,
+      weather_fail_mode: 'allow',
+      winter_mode_active: false,
+      winter_disable_manual_start: true,
+      winter_pause_schedules: true,
+      safety_shutdown_on_winter: true,
+      system_paused_until: null,
+      safety_stop_active: false,
+      safety_stop_reason: null,
+    },
+    summary: {
+      status: 'idle',
+      headline: 'Bereit',
+      detail: 'Bereit.',
+      current_water_status: 'bereit',
+      next_watering_at: null,
+      weather_status: 'Wettersteuerung aktiv',
+      weather_overview: {
+        weather_enabled: true,
+        decision: 'allow',
+        headline: 'Bewässerung wetterseitig möglich',
+        summary_text: 'Kein kritischer Regen erwartet.',
+        forecast_window_hours: 6,
+        precipitation_probability_max: 0,
+        precipitation_sum_mm: 0,
+        probability_threshold: 70,
+        precipitation_threshold_mm: 2,
+        fail_mode: 'allow',
+        source_status: 'fresh',
+        checked_at: '2026-05-11T08:00:00Z',
+        reason_human: 'Kein kritischer Regen erwartet.',
+      },
+      active_schedule_count: 0,
+      running_zone_count: 0,
+      winter_mode_active: false,
+      safety_stop_active: false,
+      system_paused_until: null,
+      last_run_zone_name: null,
+      last_run_finished_at: null,
+      last_run_status: null,
+      manual_sequence_active: false,
+      manual_sequence_current_area_name: null,
+      manual_sequence_total_areas: 0,
+      manual_sequence_completed_areas: 0,
+      manual_sequence_skipped_schedule_count: 0,
+      manual_sequence_notice: null,
+    },
+    areas,
+  };
+}
 
 
 describe('runtimeReducer', () => {
@@ -157,5 +262,18 @@ describe('runtimeReducer', () => {
 
     expect(requested.pendingGlobalActions.runAll).toBe(true);
     expect(succeeded.pendingGlobalActions.runAll).toBe(false);
+  });
+
+  it('updates a saved area immediately in the current runtime snapshot', () => {
+    const loaded = runtimeReducer(
+      undefined,
+      RuntimeActions.loadSucceeded({ snapshot: testSnapshot([testArea({ name: 'Alter Name' })]) }),
+    );
+    const updated = runtimeReducer(
+      loaded,
+      RuntimeActions.areaSavedLocally({ area: testArea({ name: 'Neuer Name' }) }),
+    );
+
+    expect(updated.snapshot?.areas[0].name).toBe('Neuer Name');
   });
 });

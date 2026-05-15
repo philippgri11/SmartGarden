@@ -11,6 +11,32 @@ import { SystemStatusCardComponent } from '../../shared/system-status-card.compo
 import { WinterModeBannerComponent } from '../../shared/winter-mode-banner.component';
 import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 
+export function easterSunday(year: number): Date {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+export function isGermanFathersDay(date: Date = new Date()): boolean {
+  const easter = easterSunday(date.getFullYear());
+  const ascensionDay = new Date(easter.getFullYear(), easter.getMonth(), easter.getDate() + 39);
+  return date.getFullYear() === ascensionDay.getFullYear()
+    && date.getMonth() === ascensionDay.getMonth()
+    && date.getDate() === ascensionDay.getDate();
+}
+
 @Component({
   standalone: true,
   selector: 'app-dashboard',
@@ -28,7 +54,7 @@ import { RuntimeFacade } from '../../state/runtime/runtime.facade';
       <p>Alles Wichtige auf einen Blick: Zustand, nächste Bewässerung und schnelle Eingriffe.</p>
     </section>
 
-    <section class="gift-hero" aria-label="Vatertagsgeschenk">
+    <section class="gift-hero" *ngIf="showFathersDayBanner" aria-label="Vatertagsgeschenk">
       <div class="gift-hero-copy">
         <span class="gift-kicker">Dein Geschenk</span>
         <h2>Alles Gute zum Vatertag</h2>
@@ -104,6 +130,7 @@ export class DashboardComponent {
   readonly manualMinutes = signal<Record<number, number>>({});
   readonly feedback = signal('');
   readonly vm$ = this.runtime.vm$;
+  readonly showFathersDayBanner = isGermanFathersDay();
 
   minutesFor(area: Zone): number {
     return this.manualMinutes()[area.id] ?? area.default_manual_duration_minutes;

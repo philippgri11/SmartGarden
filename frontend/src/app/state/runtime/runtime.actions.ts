@@ -1,6 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
 
-import { RuntimeSnapshot, WinterModePayload } from '../../core/api.models';
+import { RuntimeSnapshot, WinterModePayload, Zone } from '../../core/api.models';
 
 
 export const RuntimeActions = createActionGroup({
@@ -9,6 +9,7 @@ export const RuntimeActions = createActionGroup({
     'Load Requested': props<{ reason?: string }>(),
     'Load Succeeded': props<{ snapshot: RuntimeSnapshot }>(),
     'Load Failed': props<{ error: string }>(),
+    'Area Saved Locally': props<{ area: Zone }>(),
 
     'Start Area Requested': props<{ zoneId: number; durationMinutes: number }>(),
     'Start Area Succeeded': props<{ zoneId: number; runId: number }>(),

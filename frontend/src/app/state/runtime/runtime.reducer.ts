@@ -75,6 +75,19 @@ function reconcilePendingAreaActions(
   return next;
 }
 
+function upsertArea(snapshot: RuntimeSnapshot | null, area: RuntimeSnapshot['areas'][number]): RuntimeSnapshot | null {
+  if (!snapshot) {
+    return snapshot;
+  }
+  const exists = snapshot.areas.some((item) => item.id === area.id);
+  return {
+    ...snapshot,
+    areas: exists
+      ? snapshot.areas.map((item) => (item.id === area.id ? area : item))
+      : [...snapshot.areas, area],
+  };
+}
+
 export const runtimeFeature = createFeature({
   name: 'runtime',
   reducer: createReducer(
@@ -97,6 +110,10 @@ export const runtimeFeature = createFeature({
       loading: false,
       loaded: true,
       error,
+    })),
+    on(RuntimeActions.areaSavedLocally, (state, { area }) => ({
+      ...state,
+      snapshot: upsertArea(state.snapshot, area),
     })),
 
     on(RuntimeActions.startAreaRequested, (state, { zoneId }) => ({

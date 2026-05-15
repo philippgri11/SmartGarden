@@ -748,6 +748,7 @@ export class ZonesComponent {
     this.savingArea.set(true);
     request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (zone) => {
+        this.runtime.areaSavedLocally(zone);
         if (isNewArea && this.planForm.controls.scheduling_mode.value === 'static') {
           this.api.createSchedule(this.fixedSchedulePayload(zone.id)).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
             next: () => this.finishAreaSave('Bereich und fester Zeitplan angelegt.'),

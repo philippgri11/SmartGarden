@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 
-import { WinterModePayload } from '../../core/api.models';
+import { WinterModePayload, Zone } from '../../core/api.models';
 import { RuntimeActions } from './runtime.actions';
 import { selectRuntimeVm } from './runtime.selectors';
 
@@ -14,6 +14,10 @@ export class RuntimeFacade {
 
   load(reason?: string): void {
     this.store.dispatch(RuntimeActions.loadRequested({ reason }));
+  }
+
+  areaSavedLocally(area: Zone): void {
+    this.store.dispatch(RuntimeActions.areaSavedLocally({ area }));
   }
 
   startArea(zoneId: number, durationMinutes: number): void {
