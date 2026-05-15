@@ -75,6 +75,33 @@ def test_manual_start_block_reason_reports_queued_run() -> None:
     assert reason == "Der Start wurde bereits angefordert."
 
 
+def test_area_status_is_scheduled_soon_only_within_one_hour() -> None:
+    now = datetime(2026, 5, 15, 17, 31, tzinfo=UTC)
+
+    assert (
+        RuntimeService._derive_area_status(
+            zone=build_zone(),
+            app_settings=build_settings(),
+            run_state="idle",
+            next_watering_at=now + timedelta(minutes=59),
+            last_finished_run=None,
+            now=now,
+        )
+        == "scheduled-soon"
+    )
+    assert (
+        RuntimeService._derive_area_status(
+            zone=build_zone(),
+            app_settings=build_settings(),
+            run_state="idle",
+            next_watering_at=now + timedelta(minutes=61),
+            last_finished_run=None,
+            now=now,
+        )
+        == "active"
+    )
+
+
 def test_remaining_seconds_respects_zone_hard_limit() -> None:
     now = datetime.now(UTC)
     remaining = RuntimeService._current_run_remaining_seconds(

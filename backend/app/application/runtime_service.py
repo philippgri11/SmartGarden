@@ -15,6 +15,9 @@ from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, WateringRunRepository, ZoneRepository
 
 
+SCHEDULED_SOON_WINDOW_SECONDS = 60 * 60
+
+
 class RuntimeService:
     def __init__(self, session: Session, settings: Settings):
         self.session = session
@@ -364,7 +367,7 @@ class RuntimeService:
             return "error"
         if run_state == "queued":
             return "scheduled-soon"
-        if next_watering_at and 0 <= (next_watering_at - now).total_seconds() <= 12 * 60 * 60:
+        if next_watering_at and 0 <= (next_watering_at - now).total_seconds() <= SCHEDULED_SOON_WINDOW_SECONDS:
             return "scheduled-soon"
         return "active"
 
