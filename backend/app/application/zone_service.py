@@ -56,6 +56,7 @@ class ZoneService:
         return results
 
     def create_zone(self, payload: ZoneCreate) -> orm.Zone:
+        self._validate_gpio_mapping(payload)
         data = payload.model_dump()
         profile = data.pop("irrigation_profile", None)
         adaptive_plan = data.pop("adaptive_irrigation_plan", None)
@@ -69,6 +70,7 @@ class ZoneService:
         zone = self.zones.get(zone_id)
         if not zone:
             return None
+        self._validate_gpio_mapping(payload, zone_id=zone_id)
         data = payload.model_dump()
         profile = data.pop("irrigation_profile", None)
         adaptive_plan = data.pop("adaptive_irrigation_plan", None)
@@ -87,3 +89,16 @@ class ZoneService:
         self.zones.delete(zone)
         self.session.commit()
         return True
+
+    def _validate_gpio_mapping(self, payload: ZoneCreate, *, zone_id: int | None = None) -> None:
+        if payload.gpio_line < 0 or payload.gpio_line > 53:
+            raise ValueError("GPIO-Line muss auf diesem Raspberry Pi zwischen 0 und 53 liegen.")
+        if not payload.active:
+            return
+        for existing in self.zones.list():
+            if zone_id is not None and existing.id == zone_id:
+                continue
+            if existing.active and existing.gpio_chip == payload.gpio_chip and existing.gpio_line == payload.gpio_line:
+                raise ValueError(
+                    f"GPIO {payload.gpio_chip} Line {payload.gpio_line} wird bereits von Bereich '{existing.name}' verwendet."
+                )

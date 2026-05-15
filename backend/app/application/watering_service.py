@@ -96,18 +96,13 @@ class WateringService:
             )
             .all()
         )
-        zone = self.zones.get(zone_id)
         now = datetime.now(UTC)
         for run in runs_to_stop:
             run.stop_requested = True
             run.reason = "stop requested via api"
-            run.status = RunStatus.CANCELLED.value
-            run.finished_at = now
-            if run.started_at:
-                run.duration_seconds = int((run.finished_at - run.started_at).total_seconds())
-        if zone:
-            self.gpio.deactivate_zone(zone)
-            self.gpio_state.record_state(zone_id=zone.id, state=False, source="api", reason="manual stop")
+            if run.status == RunStatus.PLANNED.value:
+                run.status = RunStatus.CANCELLED.value
+                run.finished_at = now
         self.session.commit()
         return len(runs_to_stop)
 
@@ -118,20 +113,15 @@ class WateringService:
             .filter(orm.WateringRun.status.in_([RunStatus.PLANNED.value, RunStatus.RUNNING.value]))
             .all()
         )
-        zones = self.zones.list()
         now = datetime.now(UTC)
         for run in runs_to_stop:
             run.stop_requested = True
             run.reason = "emergency stop requested via api"
-            run.status = RunStatus.CANCELLED.value
-            run.finished_at = now
-            if run.started_at:
-                run.duration_seconds = int((run.finished_at - run.started_at).total_seconds())
-        if zones:
-            self.gpio.deactivate_all(zones)
-            self.gpio_state.record_all_off(source="api", reason="emergency stop")
+            if run.status == RunStatus.PLANNED.value:
+                run.status = RunStatus.CANCELLED.value
+                run.finished_at = now
         app_settings.safety_stop_active = True
-        app_settings.safety_stop_reason = "Bewässerung gestoppt. Alle Ventile sind geschlossen."
+        app_settings.safety_stop_reason = "Bewässerung gestoppt. Laufende Ventile werden durch den Scheduler geschlossen."
         self.session.commit()
         return len(runs_to_stop)
 
@@ -161,14 +151,14 @@ class WateringService:
                 self.gpio_state.record_state(zone_id=zone.id, state=False, source="scheduler", reason="stop requested")
                 run.status = RunStatus.CANCELLED.value
                 run.finished_at = now
-                run.duration_seconds = int((run.finished_at - run.started_at).total_seconds()) if run.started_at else 0
+                run.duration_seconds = self._duration_seconds(run.started_at, run.finished_at) if run.started_at else 0
                 continue
             if should_finish_run(run.started_at, now, run.requested_duration_minutes, zone.max_duration_minutes):
                 self.gpio.deactivate_zone(zone)
                 self.gpio_state.record_state(zone_id=zone.id, state=False, source="scheduler", reason="duration completed")
                 run.status = RunStatus.COMPLETED.value
                 run.finished_at = now
-                run.duration_seconds = int((run.finished_at - run.started_at).total_seconds())
+                run.duration_seconds = self._duration_seconds(run.started_at, run.finished_at)
         self.session.commit()
 
     def execute_planned_runs(self) -> None:
@@ -452,3 +442,11 @@ class WateringService:
         run.started_at = datetime.now(UTC)
         run.reason = weather_result.reason
         return True
+
+    @staticmethod
+    def _duration_seconds(started_at: datetime, finished_at: datetime) -> int:
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=UTC)
+        return int((finished_at - started_at).total_seconds())

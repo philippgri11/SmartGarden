@@ -56,7 +56,6 @@ class SystemService:
             for run in running:
                 run.stop_requested = True
                 run.reason = "winter mode activated"
-            self.gpio.deactivate_all(self.zones.list())
         self.session.commit()
         self.session.refresh(entity)
         return entity

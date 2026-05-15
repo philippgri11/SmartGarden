@@ -13,7 +13,7 @@ def test_zone_assistant_suggest_endpoint(client) -> None:
 
 def test_zone_assistant_adjust_endpoint_returns_diff(client) -> None:
     zone = client.post('/api/zones', json={
-        **create_zone_payload('Tomatenbeet', 70),
+        **create_zone_payload('Tomatenbeet', 30),
         'zone_profile_description': 'Hochbeet mit Gemüse',
         'irrigation_profile': {
             'zoneType': 'raised_bed', 'plantType': 'vegetables', 'sunExposure': 'sunny', 'rainExposure': 'high',
@@ -33,7 +33,7 @@ def test_zone_assistant_adjust_endpoint_returns_diff(client) -> None:
 
 def test_zone_roundtrip_includes_irrigation_profile(client) -> None:
     created = client.post('/api/zones', json={
-        **create_zone_payload('Terrasse', 71),
+        **create_zone_payload('Terrasse', 31),
         'zone_profile_description': 'Kübel auf der Südterrasse',
         'irrigation_profile': {
             'zoneType': 'container', 'plantType': 'flowers', 'sunExposure': 'full_sun', 'rainExposure': 'none',
@@ -74,7 +74,7 @@ def test_suggest_adaptive_plan_endpoint_requires_user_approval_payload(client) -
 
 def test_zone_roundtrip_includes_adaptive_plan_without_enabling_static_schedules(client) -> None:
     created = client.post('/api/zones', json={
-        **create_zone_payload('Adaptive Terrasse', 72),
+        **create_zone_payload('Adaptive Terrasse', 32),
         'scheduling_mode': 'adaptive',
         'irrigation_profile': {
             'zoneType': 'container', 'plantType': 'flowers', 'sunExposure': 'full_sun', 'rainExposure': 'none',

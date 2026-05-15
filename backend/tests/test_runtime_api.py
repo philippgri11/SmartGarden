@@ -58,6 +58,18 @@ def test_runtime_snapshot_keeps_area_activation_deterministic(client: TestClient
     assert areas_by_id[second["id"]]["active"] is False
 
 
+def test_active_zones_cannot_share_same_gpio_line(client: TestClient) -> None:
+    first = client.post("/api/zones", json=create_zone_payload("Rasen Vorne", 21))
+    assert first.status_code == 201
+
+    duplicate = client.post("/api/zones", json=create_zone_payload("Rasen Hinten", 21))
+    assert duplicate.status_code == 400
+    assert "wird bereits" in duplicate.json()["detail"]
+
+    inactive_duplicate = client.post("/api/zones", json=create_zone_payload("Reserve", 21, active=False))
+    assert inactive_duplicate.status_code == 201
+
+
 def test_delete_zone_with_related_runtime_records_succeeds(client: TestClient) -> None:
     zone = client.post("/api/zones", json=create_zone_payload("Loeschtest", 31)).json()
     start_response = client.post(f"/api/zones/{zone['id']}/start", json={"duration_minutes": 3})
@@ -101,7 +113,7 @@ def test_runtime_snapshot_refreshes_weather_values_when_stored_decision_is_incom
     zone = client.post(
         "/api/zones",
         json={
-            **create_zone_payload("Wetter live", 61),
+            **create_zone_payload("Wetter live", 50),
             "weather_enabled": True,
             "weather_probability_threshold": 70,
             "weather_precipitation_mm_threshold": 2.0,

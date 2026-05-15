@@ -85,7 +85,10 @@ def create_zone(
     db: Session = Depends(get_db),
     app_settings: Settings = Depends(get_app_settings),
 ) -> ZoneResponse:
-    zone = ZoneService(db).create_zone(payload)
+    try:
+        zone = ZoneService(db).create_zone(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     area_snapshot = RuntimeService(db, app_settings).area_snapshots_by_zone_id().get(zone.id)
     return ZoneResponse.model_validate(area_snapshot)
 
@@ -97,7 +100,10 @@ def update_zone(
     db: Session = Depends(get_db),
     app_settings: Settings = Depends(get_app_settings),
 ) -> ZoneResponse:
-    zone = ZoneService(db).update_zone(zone_id, payload)
+    try:
+        zone = ZoneService(db).update_zone(zone_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not zone:
         raise HTTPException(status_code=404, detail="zone not found")
     area_snapshot = RuntimeService(db, app_settings).area_snapshots_by_zone_id().get(zone.id)

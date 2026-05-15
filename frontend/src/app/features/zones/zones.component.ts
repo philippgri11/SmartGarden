@@ -538,13 +538,13 @@ const WEEKDAYS = [
               <span>Allgemeine Beschreibung</span>
               <textarea formControlName="description"></textarea>
             </label>
-            <label class="field field-span-3">
-              <span>GPIO-Chip</span>
+            <label class="field field-span-3" title="Auf dem aktuellen Raspberry Pi 3 liegen die 40-Pin-Header-GPIOs auf /dev/gpiochip0. Nur aendern, wenn die Hardware wirklich an einem anderen Chip haengt.">
+              <span>GPIO-Chip <span class="info-dot" title="Raspberry Pi 3: normalerweise /dev/gpiochip0. Der Scheduler-Container bekommt genau dieses Device durchgereicht.">i</span></span>
               <input formControlName="gpio_chip" />
             </label>
-            <label class="field field-span-3">
-              <span>GPIO-Line</span>
-              <input type="number" formControlName="gpio_line" />
+            <label class="field field-span-3" title="Nummer der BCM-GPIO-Line, nicht die physische Pin-Nummer. Jede aktive Zone muss eine eigene Line verwenden. GPIO 0 und 1 sind fuer HAT-ID reserviert und sollten vermieden werden.">
+              <span>GPIO-Line <span class="info-dot" title="BCM-Line auf dem GPIO-Chip. Beispiel: GPIO 17 ist Line 17. Nicht doppelt fuer aktive Bereiche verwenden.">i</span></span>
+              <input type="number" min="0" max="53" formControlName="gpio_line" />
             </label>
             <label class="field field-span-3">
               <span>Regenwahrscheinlichkeit ab (%)</span>
@@ -558,7 +558,9 @@ const WEEKDAYS = [
         </app-expert-section>
 
         <div class="toolbar field-full">
-          <button class="button" type="submit">{{ selectedArea ? 'Bereich speichern' : 'Bereich anlegen' }}</button>
+          <button class="button" type="submit" [disabled]="savingArea()">
+            {{ savingArea() ? 'Speichert...' : (selectedArea ? 'Bereich speichern' : 'Bereich anlegen') }}
+          </button>
           <button class="button secondary" type="button" (click)="resetForm()">Zurücksetzen</button>
         </div>
       </form>
@@ -608,6 +610,7 @@ export class ZonesComponent {
   readonly feedback = signal('');
   readonly feedbackKind = signal<'success' | 'warning'>('success');
   readonly assistantBusy = signal(false);
+  readonly savingArea = signal(false);
   readonly assistantBusyText = signal('');
   readonly assistantStep = signal<AssistantStep>('describe');
   readonly recording = signal(false);
@@ -727,8 +730,14 @@ export class ZonesComponent {
       return;
     }
     const isNewArea = !this.selectedArea;
+    const rawForm = this.form.getRawValue();
     const payload = {
-      ...this.form.getRawValue(),
+      ...rawForm,
+      gpio_line: Number(rawForm.gpio_line),
+      default_manual_duration_minutes: Number(rawForm.default_manual_duration_minutes),
+      max_duration_minutes: Number(rawForm.max_duration_minutes),
+      weather_probability_threshold: rawForm.weather_probability_threshold === null ? null : Number(rawForm.weather_probability_threshold),
+      weather_precipitation_mm_threshold: rawForm.weather_precipitation_mm_threshold === null ? null : Number(rawForm.weather_precipitation_mm_threshold),
       irrigation_profile: this.hasRealProfile() ? this.currentProfile() : null,
       scheduling_mode: this.planForm.controls.scheduling_mode.value,
       adaptive_irrigation_plan: this.currentAdaptivePlan(),
@@ -736,20 +745,27 @@ export class ZonesComponent {
     const request$ = this.selectedArea
       ? this.api.updateZone(this.selectedArea.id, payload)
       : this.api.createZone(payload);
-    request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((zone) => {
-      if (isNewArea && this.planForm.controls.scheduling_mode.value === 'static') {
-        this.api.createSchedule(this.fixedSchedulePayload(zone.id)).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-          next: () => this.finishAreaSave('Bereich und fester Zeitplan angelegt.'),
-          error: (error) => {
-            this.selectedArea = zone;
-            this.areaEditing.set(false);
-            this.runtime.load('areas-created-without-schedule');
-            this.setFeedback(this.apiErrorMessage(error, 'Bereich wurde angelegt, der feste Zeitplan aber nicht.'), 'warning');
-          },
-        });
-        return;
-      }
-      this.finishAreaSave(this.selectedArea ? 'Bereich gespeichert.' : 'Bereich angelegt.');
+    this.savingArea.set(true);
+    request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (zone) => {
+        if (isNewArea && this.planForm.controls.scheduling_mode.value === 'static') {
+          this.api.createSchedule(this.fixedSchedulePayload(zone.id)).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+            next: () => this.finishAreaSave('Bereich und fester Zeitplan angelegt.'),
+            error: (error) => {
+              this.selectedArea = zone;
+              this.areaEditing.set(false);
+              this.runtime.load('areas-created-without-schedule');
+              this.setFeedback(this.apiErrorMessage(error, 'Bereich wurde angelegt, der feste Zeitplan aber nicht.'), 'warning');
+            },
+          });
+          return;
+        }
+        this.finishAreaSave(this.selectedArea ? 'Bereich gespeichert.' : 'Bereich angelegt.');
+      },
+      error: (error) => {
+        this.savingArea.set(false);
+        this.setFeedback(this.apiErrorMessage(error, 'Bereich konnte nicht gespeichert werden.'), 'warning');
+      },
     });
   }
 
@@ -1114,6 +1130,7 @@ export class ZonesComponent {
   }
 
   private finishAreaSave(message: string): void {
+    this.savingArea.set(false);
     this.setFeedback(message);
     this.resetForm();
     this.runtime.load('areas-form-saved');

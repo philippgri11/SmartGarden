@@ -6,6 +6,5 @@ from app.infrastructure.gpio.simulated import SimulatedGpioAdapter
 
 def build_gpio_adapter(settings: Settings) -> GpioAdapter:
     if settings.gpio_mode == "real":
-        return RealGpioAdapter()
+        return RealGpioAdapter(active_low=settings.gpio_active_low)
     return SimulatedGpioAdapter()
-

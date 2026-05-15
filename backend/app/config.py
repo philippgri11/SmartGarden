@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     gpio_mode: Literal["simulated", "real"] = "simulated"
     gpio_safe_shutdown_on_start: bool = True
     gpio_default_chip: str = "/dev/gpiochip0"
+    gpio_active_low: bool = False
 
     weather_enabled: bool = True
     weather_api_base_url: str = "https://api.open-meteo.com/v1/forecast"
