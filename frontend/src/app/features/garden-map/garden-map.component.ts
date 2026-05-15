@@ -254,6 +254,7 @@ export class GardenMapComponent implements OnInit {
   private readonly layerByShapeId = new Map<number, L.Layer>();
   private drawControl?: L.Control;
   private pendingImageDataUrl: string | null = null;
+  private renderedMapKey: string | null = null;
 
   readonly mapForm = this.fb.nonNullable.group({
     name: ['', Validators.required],
@@ -319,6 +320,7 @@ export class GardenMapComponent implements OnInit {
         this.selectedMap.set(null);
         this.currentMapView.set(null);
         this.selectedMapIdControl.setValue(null, { emitEvent: false });
+        this.renderedMapKey = null;
         this.clearMapCanvas();
       }
       this.areaNamesById.set(
@@ -445,6 +447,7 @@ export class GardenMapComponent implements OnInit {
     this.mapError.set('');
     this.selectedMapIdControl.setValue(null, { emitEvent: false });
     this.mapForm.reset({ name: '', image_url: '', width: 1600, height: 900 });
+    this.renderedMapKey = null;
     this.clearMapCanvas();
   }
 
@@ -508,6 +511,9 @@ export class GardenMapComponent implements OnInit {
     if (!this.map) {
       return;
     }
+    const mapKey = this.mapViewKey(view);
+    const shouldFitBounds = this.renderedMapKey !== mapKey;
+    this.renderedMapKey = mapKey;
     this.clearMapCanvas();
     const bounds = L.latLngBounds([0, 0], [view.map.height, view.map.width]);
     this.map.setMaxBounds(bounds);
@@ -515,13 +521,15 @@ export class GardenMapComponent implements OnInit {
       this.imageOverlay = L.imageOverlay(view.map.image_url, bounds);
       this.imageOverlay.on('load', () => {
         this.map?.invalidateSize();
-        this.map?.fitBounds(bounds, { padding: [20, 20] });
+        if (shouldFitBounds) {
+          this.map?.fitBounds(bounds, { padding: [20, 20] });
+        }
       });
       this.imageOverlay.on('error', () => {
         this.mapError.set('Das Gartenbild konnte nicht geladen werden.');
       });
       this.imageOverlay.addTo(this.map);
-    } else {
+    } else if (shouldFitBounds) {
       this.map.fitBounds(bounds, { padding: [20, 20] });
     }
     const nextSelectedId = this.selectedShape()?.id ?? null;
@@ -553,8 +561,19 @@ export class GardenMapComponent implements OnInit {
     }
     setTimeout(() => {
       this.map?.invalidateSize();
-      this.map?.fitBounds(bounds, { padding: [20, 20] });
+      if (shouldFitBounds) {
+        this.map?.fitBounds(bounds, { padding: [20, 20] });
+      }
     }, 0);
+  }
+
+  private mapViewKey(view: GardenMapView): string {
+    return [
+      view.map.id,
+      view.map.width,
+      view.map.height,
+      view.map.image_url ?? '',
+    ].join(':');
   }
 
   private clearMapCanvas(): void {
