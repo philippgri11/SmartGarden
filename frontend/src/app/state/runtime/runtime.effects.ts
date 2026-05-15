@@ -7,6 +7,8 @@ import { ApiService } from '../../core/api.service';
 import { RuntimeActions } from './runtime.actions';
 import { selectAreaById, selectRuntimeHasTransientActivity } from './runtime.selectors';
 
+const IDLE_POLL_SECONDS = 15;
+const TRANSIENT_POLL_SECONDS = 1;
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null) {
@@ -43,7 +45,16 @@ export class RuntimeEffects {
       ofType(RuntimeActions.loadSucceeded),
       switchMap(() => this.store.select(selectRuntimeHasTransientActivity).pipe(take(1))),
       filter((hasTransientActivity) => hasTransientActivity),
-      switchMap(() => timer(1000).pipe(map(() => RuntimeActions.loadRequested({ reason: 'transient-poll' })))),
+      switchMap(() => timer(TRANSIENT_POLL_SECONDS * 1000).pipe(map(() => RuntimeActions.loadRequested({ reason: 'transient-poll' })))),
+    ),
+  );
+
+  readonly pollWhileIdle$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(RuntimeActions.loadSucceeded),
+      switchMap(() => this.store.select(selectRuntimeHasTransientActivity).pipe(take(1))),
+      filter((hasTransientActivity) => !hasTransientActivity),
+      switchMap(() => timer(IDLE_POLL_SECONDS * 1000).pipe(map(() => RuntimeActions.loadRequested({ reason: 'idle-poll' })))),
     ),
   );
 
