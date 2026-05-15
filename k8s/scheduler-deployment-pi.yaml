@@ -23,6 +23,8 @@ spec:
           image: irrigation-backend:latest
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "app.entrypoint", "worker"]
+          securityContext:
+            privileged: true
           envFrom:
             - configMapRef:
                 name: irrigation-config
