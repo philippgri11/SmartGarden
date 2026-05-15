@@ -60,18 +60,18 @@ import { IrrigationProjectionItem } from '../../core/api.models';
           </thead>
           <tbody>
             <tr *ngFor="let item of vm.items" [class.skipped-row]="item.status !== 'planned'">
-              <td>{{ dayLabel(item.planned_start) }}</td>
-              <td>
+              <td data-label="Tag">{{ dayLabel(item.planned_start) }}</td>
+              <td data-label="Start">
                 {{ timeLabel(item.planned_start) }}
                 <span class="sequence-note" *ngIf="item.adjusted_for_sequence">verschoben</span>
               </td>
-              <td>{{ timeLabel(item.planned_end) }}</td>
-              <td>{{ item.zone_name }}</td>
-              <td>{{ sourceLabel(item.source) }}</td>
-              <td>{{ item.duration_minutes }} min</td>
-              <td><span class="status-chip" [class.status-paused]="item.status !== 'planned'">{{ statusLabel(item.status) }}</span></td>
-              <td>{{ item.weather_summary ?? 'Keine Wetterangabe' }}</td>
-              <td [title]="item.reason">{{ userReason(item) }}</td>
+              <td data-label="Ende">{{ timeLabel(item.planned_end) }}</td>
+              <td data-label="Bereich">{{ item.zone_name }}</td>
+              <td data-label="Regel">{{ sourceLabel(item.source) }}</td>
+              <td data-label="Dauer">{{ item.duration_minutes }} min</td>
+              <td data-label="Status"><span class="status-chip" [class.status-paused]="item.status !== 'planned'">{{ statusLabel(item.status) }}</span></td>
+              <td data-label="Wetter">{{ item.weather_summary ?? 'Keine Wetterangabe' }}</td>
+              <td data-label="Warum" [title]="item.reason">{{ userReason(item) }}</td>
             </tr>
           </tbody>
         </table>

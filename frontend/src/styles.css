@@ -1782,6 +1782,77 @@ app-expert-section {
     grid-template-columns: 1fr;
   }
 
+  .planning-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-table-wrap {
+    overflow: visible;
+  }
+
+  .planning-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .planning-table thead {
+    display: none;
+  }
+
+  .planning-table,
+  .planning-table tbody,
+  .planning-table tr,
+  .planning-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .planning-table tr {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface-strong);
+    box-shadow: 0 8px 22px rgba(20, 34, 25, 0.06);
+  }
+
+  .planning-table tr + tr {
+    margin-top: 12px;
+  }
+
+  .planning-table td {
+    display: grid;
+    grid-template-columns: minmax(92px, 36%) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(205, 222, 207, 0.65);
+  }
+
+  .planning-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 700;
+  }
+
+  .planning-table td:first-child {
+    padding-top: 0;
+  }
+
+  .planning-table td:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .planning-table td[data-label="Bereich"] {
+    font-weight: 800;
+  }
+
+  .sequence-note {
+    margin-top: 6px;
+  }
+
   .zones-form-grid > .field > span,
   .schedules-form-grid > .field > span,
   .settings-form-grid > .field > span,
@@ -1850,5 +1921,10 @@ app-expert-section {
   .mobile-header-actions .emergency-stop {
     padding-inline: 14px;
     min-height: 44px;
+  }
+
+  .planning-table td {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
