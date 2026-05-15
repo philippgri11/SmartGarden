@@ -153,7 +153,7 @@ def test_runtime_next_watering_uses_sequenced_projection(db_session, monkeypatch
     db_session.commit()
     monkeypatch.setattr("app.application.weather_service.WeatherService.try_fetch_current_summary", lambda *args, **kwargs: None)
 
-    areas = RuntimeService(db_session, TEST_SETTINGS).list_areas(now=datetime(2026, 5, 13, 5, 0, tzinfo=UTC), app_settings=settings)
+    areas = RuntimeService(db_session, TEST_SETTINGS).list_areas(now=datetime(2026, 5, 13, 3, 0, tzinfo=UTC), app_settings=settings)
 
     terrace = next(area for area in areas if area["name"] == "Terrasse")
     assert terrace["next_watering_at"].time().hour == 5

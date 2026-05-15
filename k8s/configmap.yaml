@@ -8,6 +8,7 @@ data:
   DATABASE_PORT: "5432"
   DATABASE_NAME: irrigation
   DATABASE_USER: postgres
+  APP_TIMEZONE: Europe/Berlin
   GPIO_MODE: simulated
   GPIO_ACTIVE_LOW: "true"
   WEATHER_ENABLED: "true"

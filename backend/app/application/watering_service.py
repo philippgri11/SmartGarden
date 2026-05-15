@@ -14,6 +14,7 @@ from app.config import Settings
 from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX
 from app.domain.models import RunStatus, TriggerType, WeatherDecisionKind
 from app.domain.policies import enforce_max_duration, should_finish_run
+from app.domain.timezone import app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts, build_zone_irrigation_recommendation
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import WateringRunRepository, ZoneRepository
@@ -194,9 +195,10 @@ class WateringService:
             .all()
         )
         now = datetime.now(UTC)
+        schedule_tz = app_timezone(self.settings)
         for run in planned_runs:
             if run.scheduled_for and run.scheduled_time:
-                scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=UTC)
+                scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=schedule_tz).astimezone(UTC)
                 if scheduled_at > now:
                     continue
             zone = self.zones.get(run.zone_id)
@@ -345,6 +347,7 @@ class WateringService:
         include_existing_planned: bool,
     ) -> int:
         now = datetime.now(UTC)
+        schedule_tz = app_timezone(self.settings)
         skipped_count = 0
         query = self.session.query(orm.WateringRun).filter(
             orm.WateringRun.schedule_id.is_not(None),
@@ -357,7 +360,7 @@ class WateringService:
         for run in runs:
             if not run.scheduled_for or not run.scheduled_time:
                 continue
-            scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=UTC)
+            scheduled_at = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=schedule_tz).astimezone(UTC)
             if scheduled_at <= sequence_window_end:
                 run.status = RunStatus.SKIPPED.value
                 run.finished_at = now

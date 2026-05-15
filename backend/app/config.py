@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     frontend_origin: str = "http://localhost:4200"
+    app_timezone: str = "Europe/Berlin"
 
     database_url: str | None = None
     database_host: str = "postgres"

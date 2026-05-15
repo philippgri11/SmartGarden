@@ -16,6 +16,7 @@ from app.config import Settings
 from app.domain.adaptive_irrigation import expand_time_windows, WINDOW_STARTS, decide_adaptive_plan
 from app.domain.models import RunStatus, TriggerType
 from app.domain.services import schedule_occurrences
+from app.domain.timezone import app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, ZoneRepository
@@ -46,13 +47,14 @@ class IrrigationProjectionService:
         generated_at = now or datetime.now(UTC)
         if generated_at.tzinfo is None:
             generated_at = generated_at.replace(tzinfo=UTC)
+        schedule_now = generated_at.astimezone(app_timezone(self.settings))
         days = max(1, min(days, 14))
         app_settings = self.weather.get_settings()
         weather_lookup = self.weather.try_fetch_current_lookup(app_settings=app_settings) if app_settings.weather_enabled else None
         weather_summary = weather_lookup.summary if weather_lookup else None
         weather_status = weather_lookup.source_status if weather_lookup else "unavailable"
-        candidates = self._manual_rule_candidates(now=generated_at, days=days, app_settings=app_settings)
-        candidates.extend(self._adaptive_rule_candidates(now=generated_at, days=days, weather_summary=weather_summary))
+        candidates = self._manual_rule_candidates(now=schedule_now, days=days, app_settings=app_settings)
+        candidates.extend(self._adaptive_rule_candidates(now=schedule_now, days=days, weather_summary=weather_summary))
         items = self._sequence_candidates(candidates)
         return IrrigationProjectionResponse(
             generated_at=generated_at,
@@ -63,7 +65,7 @@ class IrrigationProjectionService:
 
     def next_available_start(self, *, candidate_start: datetime, duration_minutes: int, zone_id: int) -> datetime:
         if candidate_start.tzinfo is None:
-            candidate_start = candidate_start.replace(tzinfo=UTC)
+            candidate_start = candidate_start.replace(tzinfo=app_timezone(self.settings))
         candidates = []
         for run in self._planned_runs_on_day(candidate_start):
             if run.zone_id == zone_id:

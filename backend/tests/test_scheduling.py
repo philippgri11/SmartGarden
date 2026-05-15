@@ -120,7 +120,7 @@ def test_projection_sequences_manual_before_adaptive(db_session, monkeypatch) ->
     )
     projection = IrrigationProjectionService(db_session, TEST_SETTINGS).build_projection(
         days=1,
-        now=datetime(2026, 5, 13, 5, 0, tzinfo=UTC),
+        now=datetime(2026, 5, 13, 3, 0, tzinfo=UTC),
     )
 
     first_two = projection.items[:2]
@@ -130,6 +130,45 @@ def test_projection_sequences_manual_before_adaptive(db_session, monkeypatch) ->
     assert first_two[1].adjusted_for_sequence is True
     assert projection.weather_source_status == "unavailable"
     assert "Wetterdaten fehlen" in (first_two[1].weather_summary or "")
+
+
+def test_projection_keeps_fixed_schedule_as_local_wall_time(db_session, monkeypatch) -> None:
+    zone = orm.Zone(
+        name="Terrasse",
+        description="Terrasse",
+        gpio_chip="/dev/gpiochip0",
+        gpio_line=7,
+        active=True,
+        default_manual_duration_minutes=5,
+        max_duration_minutes=30,
+        weather_enabled=False,
+    )
+    db_session.add(zone)
+    db_session.flush()
+    db_session.add(
+        orm.Schedule(
+            zone_id=zone.id,
+            active=True,
+            weekdays="fri",
+            start_time=time(14, 0),
+            duration_minutes=1,
+            weather_enabled=False,
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.application.weather_service.WeatherService.try_fetch_current_lookup",
+        lambda *args, **kwargs: ForecastLookup(summary=None, source_status="unavailable", checked_at=None, error="429"),
+    )
+
+    projection = IrrigationProjectionService(db_session, TEST_SETTINGS).build_projection(
+        days=1,
+        now=datetime(2026, 5, 15, 11, 58, tzinfo=UTC),
+    )
+
+    item = projection.items[0]
+    assert item.planned_start.time() == time(14, 0)
+    assert item.planned_start.utcoffset().total_seconds() == 7200
 
 
 def test_projection_endpoint_returns_backend_plan(client, monkeypatch) -> None:
@@ -207,3 +246,59 @@ def test_execute_planned_runs_starts_only_one_zone_even_if_config_allows_more(db
     statuses = [run.status for run in db_session.query(orm.WateringRun).order_by(orm.WateringRun.id).all()]
     assert statuses.count(RunStatus.RUNNING.value) == 1
     assert statuses.count(RunStatus.PLANNED.value) == 1
+
+
+def test_execute_planned_runs_compares_scheduled_time_in_app_timezone(db_session, monkeypatch) -> None:
+    zone = orm.Zone(name="Terrasse", description="", gpio_chip="/dev/gpiochip0", gpio_line=17, active=True, max_duration_minutes=20)
+    db_session.add(zone)
+    db_session.flush()
+    run = WateringRunRepository(db_session).create_planned_run(
+        zone_id=zone.id,
+        schedule_id=None,
+        trigger_type=TriggerType.SCHEDULED,
+        duration_minutes=5,
+        scheduled_for=datetime(2026, 5, 15).date(),
+        scheduled_time=time(14, 0),
+    )
+    db_session.commit()
+    monkeypatch.setattr("app.application.weather_service.WeatherService.get_settings", lambda self: orm.AppSetting(
+        id=1,
+        location_name="Test",
+        latitude=52.52,
+        longitude=13.405,
+        weather_enabled=False,
+        weather_window_hours=6,
+        weather_probability_threshold=70,
+        weather_precipitation_mm_threshold=2,
+        weather_fail_mode="allow",
+        winter_mode_active=False,
+        winter_disable_manual_start=True,
+        winter_pause_schedules=True,
+        safety_shutdown_on_winter=True,
+        safety_stop_active=False,
+    ))
+
+    class BeforeLocalStart(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 5, 15, 11, 59, tzinfo=UTC)
+            return value if tz else value.replace(tzinfo=None)
+
+    monkeypatch.setattr("app.application.watering_service.datetime", BeforeLocalStart)
+    service = WateringService(db_session, Settings(environment="test", gpio_mode="simulated"), SimulatedGpioAdapter())
+    service.execute_planned_runs()
+    db_session.refresh(run)
+
+    assert run.status == RunStatus.PLANNED.value
+
+    class AtLocalStart(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 5, 15, 12, 0, tzinfo=UTC)
+            return value if tz else value.replace(tzinfo=None)
+
+    monkeypatch.setattr("app.application.watering_service.datetime", AtLocalStart)
+    service.execute_planned_runs()
+    db_session.refresh(run)
+
+    assert run.status == RunStatus.RUNNING.value

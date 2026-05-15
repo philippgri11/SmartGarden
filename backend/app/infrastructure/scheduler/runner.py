@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan
 from app.domain.models import RunStatus, TriggerType
 from app.domain.services import current_schedule_slot
+from app.domain.timezone import now_in_app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import ScheduleRepository, WateringRunRepository, ZoneRepository
@@ -53,6 +54,7 @@ class SchedulerRunner:
         app_settings = WeatherService(session, self.settings).get_settings()
         watering = WateringService(session, self.settings, self.gpio)
         now = datetime.now(UTC)
+        schedule_now = now_in_app_timezone(self.settings)
         if app_settings.safety_stop_active:
             return
         if app_settings.winter_mode_active and app_settings.winter_pause_schedules:
@@ -62,7 +64,7 @@ class SchedulerRunner:
         schedules = ScheduleRepository(session).list_active()
         runs = WateringRunRepository(session)
         for schedule in schedules:
-            slot = current_schedule_slot(schedule, now, self.settings.scheduler_due_grace_minutes)
+            slot = current_schedule_slot(schedule, schedule_now, self.settings.scheduler_due_grace_minutes)
             if not slot:
                 continue
             if runs.exists_schedule_slot(schedule.id, slot.date(), slot.time()):
@@ -96,7 +98,7 @@ class SchedulerRunner:
                 scheduled_time=slot.time(),
                 reason="planned by scheduler",
             )
-        self._plan_adaptive_runs(session, app_settings=app_settings, watering=watering, runs=runs, now=now)
+        self._plan_adaptive_runs(session, app_settings=app_settings, watering=watering, runs=runs, now=schedule_now)
         session.commit()
 
     def _plan_adaptive_runs(self, session, *, app_settings, watering: WateringService, runs: WateringRunRepository, now: datetime) -> None:
