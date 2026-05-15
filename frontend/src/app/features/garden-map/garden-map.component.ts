@@ -18,6 +18,8 @@ import { WeatherDecisionBadgeComponent } from '../../shared/weather-decision-bad
 import { RuntimeFacade } from '../../state/runtime/runtime.facade';
 
 type LeafletLayer = L.Layer & { toGeoJSON: () => GeoJSON.Feature<GeoJSON.Geometry> };
+type MapInteractionMode = 'idle' | 'drawing' | 'editing' | 'deleting';
+type MapViewport = { center: L.LatLng; zoom: number };
 
 @Component({
   standalone: true,
@@ -255,6 +257,8 @@ export class GardenMapComponent implements OnInit {
   private drawControl?: L.Control;
   private pendingImageDataUrl: string | null = null;
   private renderedMapKey: string | null = null;
+  private interactionMode: MapInteractionMode = 'idle';
+  private pendingRenderView: GardenMapView | null = null;
 
   readonly mapForm = this.fb.nonNullable.group({
     name: ['', Validators.required],
@@ -386,6 +390,12 @@ export class GardenMapComponent implements OnInit {
     });
     this.drawControl = drawControl;
     this.map.addControl(drawControl);
+    this.map.on('draw:drawstart', () => this.beginMapInteraction('drawing'));
+    this.map.on('draw:drawstop', () => this.endMapInteraction());
+    this.map.on('draw:editstart', () => this.beginMapInteraction('editing'));
+    this.map.on('draw:editstop', () => this.endMapInteraction());
+    this.map.on('draw:deletestart', () => this.beginMapInteraction('deleting'));
+    this.map.on('draw:deletestop', () => this.endMapInteraction());
     this.map.on('draw:created', (event: any) => this.handleCreated(event));
     this.map.on('draw:edited', (event: any) => this.handleEdited(event));
     this.map.on('draw:deleted', (event: any) => this.handleDeleted(event));
@@ -448,12 +458,16 @@ export class GardenMapComponent implements OnInit {
     this.selectedMapIdControl.setValue(null, { emitEvent: false });
     this.mapForm.reset({ name: '', image_url: '', width: 1600, height: 900 });
     this.renderedMapKey = null;
+    this.pendingRenderView = null;
+    this.interactionMode = 'idle';
     this.clearMapCanvas();
   }
 
   triggerLeafletAction(selector: string): void {
     const button = this.mapSurface?.nativeElement.parentElement?.querySelector(selector) as HTMLAnchorElement | null;
+    const viewport = this.captureMapViewport();
     button?.click();
+    this.restoreMapViewportSoon(viewport);
   }
 
   minutesForShape(shape: ZoneMapShapeView): number {
@@ -511,8 +525,13 @@ export class GardenMapComponent implements OnInit {
     if (!this.map) {
       return;
     }
+    if (this.interactionMode !== 'idle') {
+      this.pendingRenderView = view;
+      return;
+    }
     const mapKey = this.mapViewKey(view);
     const shouldFitBounds = this.renderedMapKey !== mapKey;
+    const viewport = shouldFitBounds ? null : this.captureMapViewport();
     this.renderedMapKey = mapKey;
     this.clearMapCanvas();
     const bounds = L.latLngBounds([0, 0], [view.map.height, view.map.width]);
@@ -521,9 +540,7 @@ export class GardenMapComponent implements OnInit {
       this.imageOverlay = L.imageOverlay(view.map.image_url, bounds);
       this.imageOverlay.on('load', () => {
         this.map?.invalidateSize();
-        if (shouldFitBounds) {
-          this.map?.fitBounds(bounds, { padding: [20, 20] });
-        }
+        this.applyMapViewport(bounds, shouldFitBounds, viewport);
       });
       this.imageOverlay.on('error', () => {
         this.mapError.set('Das Gartenbild konnte nicht geladen werden.');
@@ -531,6 +548,8 @@ export class GardenMapComponent implements OnInit {
       this.imageOverlay.addTo(this.map);
     } else if (shouldFitBounds) {
       this.map.fitBounds(bounds, { padding: [20, 20] });
+    } else {
+      this.restoreMapViewport(viewport);
     }
     const nextSelectedId = this.selectedShape()?.id ?? null;
     this.selectedShape.set(null);
@@ -561,10 +580,62 @@ export class GardenMapComponent implements OnInit {
     }
     setTimeout(() => {
       this.map?.invalidateSize();
-      if (shouldFitBounds) {
-        this.map?.fitBounds(bounds, { padding: [20, 20] });
-      }
+      this.applyMapViewport(bounds, shouldFitBounds, viewport);
     }, 0);
+  }
+
+  private beginMapInteraction(mode: MapInteractionMode): void {
+    this.interactionMode = mode;
+  }
+
+  private endMapInteraction(): void {
+    this.interactionMode = 'idle';
+    const pendingView = this.pendingRenderView;
+    this.pendingRenderView = null;
+    if (pendingView) {
+      this.renderMap(pendingView);
+    }
+  }
+
+  private captureMapViewport(): MapViewport | null {
+    if (!this.map) {
+      return null;
+    }
+    return {
+      center: this.map.getCenter(),
+      zoom: this.map.getZoom(),
+    };
+  }
+
+  private restoreMapViewport(viewport: MapViewport | null): void {
+    if (!this.map || !viewport) {
+      return;
+    }
+    this.map.setView(viewport.center, viewport.zoom, { animate: false });
+  }
+
+  private restoreMapViewportSoon(viewport: MapViewport | null): void {
+    if (!viewport) {
+      return;
+    }
+    const restore = () => this.restoreMapViewport(viewport);
+    if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
+      window.requestAnimationFrame(restore);
+      window.setTimeout(restore, 0);
+      return;
+    }
+    setTimeout(restore, 0);
+  }
+
+  private applyMapViewport(bounds: L.LatLngBounds, shouldFitBounds: boolean, viewport: MapViewport | null): void {
+    if (!this.map) {
+      return;
+    }
+    if (shouldFitBounds) {
+      this.map.fitBounds(bounds, { padding: [20, 20] });
+      return;
+    }
+    this.restoreMapViewport(viewport);
   }
 
   private mapViewKey(view: GardenMapView): string {
