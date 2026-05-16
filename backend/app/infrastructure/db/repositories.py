@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -149,6 +149,77 @@ class AppSettingRepository:
         self.session.add(setting)
         self.session.flush()
         return setting
+
+
+class SystemHeartbeatRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    def beat(self, *, component: str, status: str, now: datetime, details: dict | None = None) -> orm.SystemHeartbeat:
+        heartbeat = self.session.get(orm.SystemHeartbeat, component)
+        if heartbeat is None:
+            heartbeat = orm.SystemHeartbeat(
+                component=component,
+                status=status,
+                details_json=details,
+                last_seen_at=now,
+            )
+            self.session.add(heartbeat)
+        else:
+            heartbeat.status = status
+            heartbeat.details_json = details
+            heartbeat.last_seen_at = now
+        self.session.flush()
+        return heartbeat
+
+    def get(self, component: str) -> orm.SystemHeartbeat | None:
+        return self.session.get(orm.SystemHeartbeat, component)
+
+    def list(self) -> list[orm.SystemHeartbeat]:
+        return list(self.session.scalars(select(orm.SystemHeartbeat).order_by(orm.SystemHeartbeat.component.asc())))
+
+
+class SystemAlertRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    def record(
+        self,
+        *,
+        fingerprint: str,
+        severity: str,
+        title: str,
+        message: str,
+        component: str,
+        now: datetime,
+    ) -> orm.SystemAlert:
+        alert = self.session.scalars(select(orm.SystemAlert).where(orm.SystemAlert.fingerprint == fingerprint)).one_or_none()
+        if alert is None:
+            alert = orm.SystemAlert(
+                fingerprint=fingerprint,
+                severity=severity,
+                title=title,
+                message=message,
+                component=component,
+                first_seen_at=now,
+                last_seen_at=now,
+                count=1,
+            )
+            self.session.add(alert)
+        else:
+            alert.severity = severity
+            alert.title = title
+            alert.message = message
+            alert.component = component
+            alert.last_seen_at = now
+            alert.count += 1
+            alert.resolved_at = None
+        self.session.flush()
+        return alert
+
+    def list_recent(self, limit: int = 20) -> list[orm.SystemAlert]:
+        stmt = select(orm.SystemAlert).order_by(orm.SystemAlert.last_seen_at.desc()).limit(limit)
+        return list(self.session.scalars(stmt))
 
 
 class GardenMapRepository:

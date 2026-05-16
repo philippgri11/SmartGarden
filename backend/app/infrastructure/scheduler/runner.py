@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import text
 
+from app.application.heartbeat_service import HeartbeatService
 from app.application.watering_service import WateringService
 from app.application.gpio_state_service import GpioStateService
 from app.application.irrigation_projection_service import IrrigationProjectionService
@@ -231,11 +232,17 @@ class SchedulerRunner:
             watering = WateringService(session, self.settings, self.gpio)
             watering.sync_active_runs()
             watering.execute_planned_runs()
+            HeartbeatService(session).beat(
+                component="scheduler",
+                status="ok",
+                details={"poll_seconds": self.settings.scheduler_poll_seconds},
+            )
         except Exception:  # noqa: BLE001
             logger.exception("scheduler tick failed, switching all zones off")
             zones = ZoneRepository(session).list()
             self.gpio.deactivate_all(zones)
             GpioStateService(session).record_all_off(source="scheduler", reason="scheduler failure safety shutdown")
+            HeartbeatService(session).beat(component="scheduler", status="error", details={"reason": "scheduler failure safety shutdown"})
             session.commit()
             session.rollback()
         finally:

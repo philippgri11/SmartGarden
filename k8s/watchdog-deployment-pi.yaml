@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watchdog
+  namespace: irrigation
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: watchdog
+  template:
+    metadata:
+      labels:
+        app: watchdog
+    spec:
+      containers:
+        - name: watchdog
+          image: irrigation-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.entrypoint", "watchdog"]
+          securityContext:
+            privileged: true
+          envFrom:
+            - configMapRef:
+                name: irrigation-config
+          env:
+            - name: GPIO_MODE
+              value: real
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: POSTGRES_PASSWORD
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: SMTP_PASSWORD
+                  optional: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 150m
+              memory: 160Mi
+          volumeMounts:
+            - name: gpiochip
+              mountPath: /dev/gpiochip0
+      volumes:
+        - name: gpiochip
+          hostPath:
+            path: /dev/gpiochip0
+            type: CharDevice

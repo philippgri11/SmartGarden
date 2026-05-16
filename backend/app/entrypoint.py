@@ -30,7 +30,7 @@ def exec_process(command: Sequence[str]) -> None:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        raise SystemExit("usage: python -m app.entrypoint [api|worker|seed-local]")
+        raise SystemExit("usage: python -m app.entrypoint [api|worker|watchdog|seed-local]")
 
     target = sys.argv[1]
     run_migrations()
@@ -39,6 +39,8 @@ def main() -> None:
         exec_process(["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"])
     if target == "worker":
         exec_process([sys.executable, "-m", "app.worker"])
+    if target == "watchdog":
+        exec_process([sys.executable, "-m", "app.watchdog"])
     if target == "seed-local":
         seed_local_data()
         return

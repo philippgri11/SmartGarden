@@ -42,13 +42,23 @@ OPENAI_SECRET_VALUE="${OPENAI_API_KEY:-}"
 if [[ -z "$OPENAI_SECRET_VALUE" ]]; then
   OPENAI_SECRET_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.OPENAI_API_KEY}' 2>/dev/null | base64 -d 2>/dev/null || true)"
 fi
+POSTGRES_SECRET_VALUE="${POSTGRES_PASSWORD:-}"
+if [[ -z "$POSTGRES_SECRET_VALUE" ]]; then
+  POSTGRES_SECRET_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.POSTGRES_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
+POSTGRES_SECRET_VALUE="${POSTGRES_SECRET_VALUE:-postgres}"
+SMTP_SECRET_VALUE="${SMTP_PASSWORD:-}"
+if [[ -z "$SMTP_SECRET_VALUE" ]]; then
+  SMTP_SECRET_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.SMTP_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
 
 secret_env_file="$(mktemp)"
 trap 'rm -f "$secret_env_file"' EXIT
 chmod 600 "$secret_env_file"
 {
-  printf 'POSTGRES_PASSWORD=%s\n' "${POSTGRES_PASSWORD:-postgres}"
+  printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_SECRET_VALUE"
   printf 'OPENAI_API_KEY=%s\n' "$OPENAI_SECRET_VALUE"
+  printf 'SMTP_PASSWORD=%s\n' "$SMTP_SECRET_VALUE"
 } > "$secret_env_file"
 
 apply_manifest "$ROOT_DIR/k8s/namespace.yaml"
@@ -62,6 +72,7 @@ apply_manifest "$ROOT_DIR/k8s/postgres-statefulset.yaml"
 apply_manifest "$ROOT_DIR/k8s/backend-service.yaml"
 apply_deployment_manifest "$ROOT_DIR/k8s/backend-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
 apply_deployment_manifest "$ROOT_DIR/k8s/scheduler-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
+apply_deployment_manifest "$ROOT_DIR/k8s/watchdog-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
 apply_manifest "$ROOT_DIR/k8s/frontend-service.yaml"
 apply_deployment_manifest "$ROOT_DIR/k8s/frontend-deployment.yaml" "$FRONTEND_IMAGE" "irrigation-frontend:latest"
 apply_manifest "$ROOT_DIR/k8s/ingress.yaml"

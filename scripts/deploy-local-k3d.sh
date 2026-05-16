@@ -17,6 +17,7 @@ kubectl create secret generic irrigation-secret \
   --namespace irrigation \
   --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}" \
   --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY:-}" \
+  --from-literal=SMTP_PASSWORD="${SMTP_PASSWORD:-}" \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f "$ROOT_DIR/k8s/configmap.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/postgres-service.yaml"
@@ -24,6 +25,7 @@ kubectl apply -f "$ROOT_DIR/k8s/postgres-statefulset.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/backend-deployment.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/backend-service.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/scheduler-deployment.yaml"
+kubectl apply -f "$ROOT_DIR/k8s/watchdog-deployment.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/frontend-deployment.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/frontend-service.yaml"
 kubectl apply -f "$ROOT_DIR/k8s/ingress.yaml"

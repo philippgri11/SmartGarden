@@ -49,6 +49,21 @@ class Settings(BaseSettings):
     scheduler_due_grace_minutes: int = 10
     scheduler_default_run_timeout_minutes: int = 60
     scheduler_lock_key: int = 420420
+    scheduler_heartbeat_max_age_seconds: int = 90
+
+    watchdog_enabled: bool = True
+    watchdog_poll_seconds: int = 15
+    watchdog_run_safety_margin_seconds: int = 90
+    watchdog_duplicate_run_threshold: int = 1
+    watchdog_alert_cooldown_minutes: int = 60
+
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = Field(default=None, repr=False)
+    smtp_use_tls: bool = True
+    smtp_from: str | None = None
+    watchdog_alert_recipients: str = ""
 
     max_global_concurrent_runs: int = 1
 

@@ -42,6 +42,15 @@ def test_runtime_snapshot_reflects_manual_start_and_safety_stop(client: TestClie
     assert released_runtime["areas"][0]["status"] == "active"
 
 
+def test_metrics_endpoint_exposes_watchdog_metrics(client: TestClient) -> None:
+    response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "irrigation_running_runs" in response.text
+    assert "irrigation_safety_stop_active" in response.text
+    assert "irrigation_open_alerts" in response.text
+
+
 def test_runtime_snapshot_keeps_area_activation_deterministic(client: TestClient) -> None:
     first = client.post("/api/zones", json=create_zone_payload("Rasen Vorne", 21)).json()
     second = client.post("/api/zones", json=create_zone_payload("Rasen Hinten", 22)).json()
