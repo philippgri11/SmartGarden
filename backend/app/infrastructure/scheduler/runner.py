@@ -125,9 +125,11 @@ class SchedulerRunner:
                 max_duration_minutes=zone.max_duration_minutes,
                 already_watered_today=self._has_adaptive_run_today(session, zone_id=zone.id, now=now),
             )
-            if not decision.scheduled_at or self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
+            if not decision.scheduled_at:
                 continue
             if active_sequence and decision.scheduled_at <= active_sequence[1]:
+                if self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
+                    continue
                 skipped_run = runs.create_planned_run(
                     zone_id=zone.id,
                     schedule_id=None,
@@ -142,6 +144,8 @@ class SchedulerRunner:
                 skipped_run.finished_at = now
                 continue
             if not decision.should_plan:
+                if self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
+                    continue
                 skipped_run = runs.create_planned_run(
                     zone_id=zone.id,
                     schedule_id=None,
@@ -159,6 +163,8 @@ class SchedulerRunner:
                 duration_minutes=decision.duration_minutes,
                 zone_id=zone.id,
             )
+            if self._adaptive_slot_exists(session, zone_id=zone.id, slot=planned_start):
+                continue
             runs.create_planned_run(
                 zone_id=zone.id,
                 schedule_id=None,

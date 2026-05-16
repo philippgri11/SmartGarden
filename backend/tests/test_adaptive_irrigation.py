@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
@@ -141,3 +141,107 @@ def test_scheduler_creates_adaptive_planned_run(db_session, monkeypatch) -> None
     assert run.status == RunStatus.PLANNED.value
     assert run.reason.startswith(ADAPTIVE_REASON_PREFIX)
     assert run.schedule_id is None
+
+
+def test_scheduler_deduplicates_adaptive_run_after_sequence_shift(db_session, monkeypatch) -> None:
+    settings = WeatherService(db_session, TEST_SETTINGS).get_settings()
+    settings.weather_enabled = True
+    blocking_zone = orm.Zone(
+        name="Kiefer",
+        description="",
+        gpio_chip="/dev/gpiochip0",
+        gpio_line=3,
+        active=True,
+        max_duration_minutes=20,
+    )
+    adaptive_zone = orm.Zone(
+        name="Teich",
+        description="",
+        gpio_chip="/dev/gpiochip0",
+        gpio_line=4,
+        active=True,
+        default_manual_duration_minutes=5,
+        max_duration_minutes=20,
+        weather_enabled=True,
+        scheduling_mode="adaptive",
+        irrigation_profile_json=ZoneIrrigationProfile(
+            zoneType="container",
+            plantType="flowers",
+            sunExposure="full_sun",
+            rainExposure="medium",
+            rainEffectiveness=0.7,
+            waterNeedLevel="high",
+            baseWaterNeedMmPerDay=4.5,
+            temperatureSensitivity=1.2,
+            sunSensitivity=1.5,
+            containerFactor=1.4,
+            dryingSpeed="fast",
+            wateringFrequencyPreference="frequent_short",
+            preferredTimeWindow="early_morning",
+            strategy="balanced",
+            riskProfile="avoid_drought_stress",
+            explanation="Testprofil",
+        ).model_dump(),
+        adaptive_irrigation_plan_json=AdaptiveIrrigationPlan(
+            preferredTimeWindows=["early_morning"],
+            allowSecondDailyRun=True,
+            minIntervalHours=6,
+            baseDurationMinutes=7,
+            minDurationMinutes=4,
+            maxDurationMinutes=10,
+            rules=["Testregel"],
+            explanation="Testplan",
+        ).model_dump(),
+    )
+    db_session.add_all([blocking_zone, adaptive_zone])
+    db_session.flush()
+    runs = WateringRunRepository(db_session)
+    runs.create_planned_run(
+        zone_id=blocking_zone.id,
+        schedule_id=None,
+        trigger_type=TriggerType.SCHEDULED,
+        duration_minutes=6,
+        scheduled_for=datetime(2026, 5, 16).date(),
+        scheduled_time=time(5, 30),
+        reason="blocking run",
+    )
+    db_session.commit()
+
+    def fake_fetch_forecast(self, *, latitude: float, longitude: float, hours: int):
+        return WeatherForecastSummary(
+            probability_max=0,
+            precipitation_sum_mm=0,
+            current_weather_code=0,
+            current_is_day=True,
+            current_temperature_c=22,
+            temperature_max_24h_c=27,
+            precipitation_last_24h_mm=0,
+            precipitation_next_24h_mm=0,
+            cloud_cover_avg_pct=5,
+            raw_response={"mock": True},
+        )
+
+    monkeypatch.setattr("app.infrastructure.weather.open_meteo_client.OpenMeteoClient.fetch_forecast", fake_fetch_forecast)
+    runner = SchedulerRunner()
+    runner.settings = TEST_SETTINGS
+    watering = WateringService(db_session, TEST_SETTINGS, SimulatedGpioAdapter())
+
+    for _ in range(2):
+        runner._plan_adaptive_runs(
+            db_session,
+            app_settings=settings,
+            watering=watering,
+            runs=runs,
+            now=datetime(2026, 5, 16, 5, 40, tzinfo=UTC),
+        )
+
+    adaptive_runs = (
+        db_session.query(orm.WateringRun)
+        .filter(
+            orm.WateringRun.zone_id == adaptive_zone.id,
+            orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+        )
+        .all()
+    )
+    assert len(adaptive_runs) == 1
+    assert adaptive_runs[0].scheduled_time == time(5, 36)

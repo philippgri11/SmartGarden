@@ -10,6 +10,10 @@ import { AreaStatusBadgeComponent } from '../../shared/area-status-badge.compone
 import { ExpertSectionComponent } from '../../shared/expert-section.component';
 
 type FilterId = 'all' | 'completed' | 'skipped' | 'failed' | 'manual' | 'scheduled';
+interface HistoryRunView {
+  run: WateringRun;
+  repeatCount: number;
+}
 
 @Component({
   standalone: true,
@@ -45,21 +49,22 @@ type FilterId = 'all' | 'completed' | 'skipped' | 'failed' | 'manual' | 'schedul
       </div>
 
       <div class="timeline">
-        <article class="timeline-item" *ngFor="let run of filteredRuns(vm.runs)">
+        <article class="timeline-item" *ngFor="let item of displayedRuns(vm.runs)">
           <div class="timeline-top">
-            <strong>{{ toSentence(run, vm.zones) }}</strong>
-            <app-area-status-badge [status]="statusForRun(run)" />
+            <strong>{{ toSentence(item.run, vm.zones) }}</strong>
+            <app-area-status-badge [status]="statusForRun(item.run)" />
           </div>
           <div class="timeline-meta">
-            <span>{{ run.created_at | date: 'short' }}</span>
-            <span>Auslöser: {{ run.trigger_type === 'manual' ? 'Manuell' : 'Automatisch' }}</span>
-            <span *ngIf="displayReason(run)">Erklärung: {{ displayReason(run) }}</span>
+            <span>{{ eventTimestamp(item.run) | date: 'short' }}</span>
+            <span>Auslöser: {{ item.run.trigger_type === 'manual' ? 'Manuell' : 'Automatisch' }}</span>
+            <span *ngIf="displayReason(item.run)">Erklärung: {{ displayReason(item.run) }}</span>
+            <span *ngIf="item.repeatCount > 1">{{ item.repeatCount }} identische Stop-Ereignisse zusammengefasst.</span>
           </div>
-          <app-expert-section [enabled]="expertMode()" title="Wetteranalyse" *ngIf="weatherDecisionFor(run) as weatherDecision">
+          <app-expert-section [enabled]="expertMode()" title="Wetteranalyse" *ngIf="weatherDecisionFor(item.run) as weatherDecision">
             <div class="weather-analysis-panel">
               <div class="weather-analysis-grid">
                 <div><span>Geprüft am</span><strong>{{ weatherDecision.checked_at ? (weatherDecision.checked_at | date: 'short') : 'Unbekannt' }}</strong></div>
-                <div><span>Prognose</span><strong>{{ weatherFacts(run) }}</strong></div>
+                <div><span>Prognose</span><strong>{{ weatherFacts(item.run) }}</strong></div>
                 <div><span>Entscheidung</span><strong>{{ weatherDecision.reason_human || weatherDecision.reason }}</strong></div>
               </div>
             </div>
@@ -103,6 +108,20 @@ export class HistoryComponent {
       return runs.filter((run) => run.trigger_type === selected);
     }
     return runs.filter((run) => run.status === selected);
+  }
+
+  displayedRuns(runs: WateringRun[]): HistoryRunView[] {
+    const views: HistoryRunView[] = [];
+    for (const run of this.filteredRuns(runs)) {
+      const previous = views[views.length - 1];
+      const duplicateKey = this.duplicateStopKey(run);
+      if (previous && duplicateKey && this.duplicateStopKey(previous.run) === duplicateKey) {
+        previous.repeatCount += 1;
+        continue;
+      }
+      views.push({ run, repeatCount: 1 });
+    }
+    return views;
   }
 
   toSentence(run: WateringRun, zones: Zone[]): string {
@@ -183,6 +202,10 @@ export class HistoryComponent {
     return run.weather_decisions[0] ?? null;
   }
 
+  eventTimestamp(run: WateringRun): string {
+    return run.finished_at ?? run.started_at ?? run.scheduled_for ?? run.created_at;
+  }
+
   weatherFacts(run: WateringRun): string {
     const decision = this.weatherDecisionFor(run);
     if (!decision) {
@@ -201,5 +224,19 @@ export class HistoryComponent {
 
   displayReason(run: WateringRun): string | null {
     return this.weatherDecisionFor(run)?.reason_human ?? run.reason ?? null;
+  }
+
+  private duplicateStopKey(run: WateringRun): string | null {
+    if (run.status !== 'cancelled' || !run.stop_requested || !run.finished_at) {
+      return null;
+    }
+    return [
+      run.zone_id,
+      run.trigger_type,
+      run.reason ?? '',
+      run.finished_at,
+      run.scheduled_for ?? '',
+      run.requested_duration_minutes,
+    ].join('|');
   }
 }
