@@ -1,0 +1,252 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: irrigation
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    rule_files:
+      - /etc/prometheus/rules.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - alertmanager.irrigation.svc.cluster.local:9093
+    scrape_configs:
+      - job_name: smartgarden-backend
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - backend.irrigation.svc.cluster.local:8000
+  rules.yml: |
+    groups:
+      - name: smartgarden.rules
+        rules:
+          - alert: SmartGardenSafetyStopActive
+            expr: irrigation_safety_stop_active == 1
+            for: 30s
+            labels:
+              severity: critical
+            annotations:
+              summary: SmartGarden Safety Stop ist aktiv
+              description: Der Safety Stop ist aktiv. Bitte pruefe Watchdog, Scheduler und Ventile.
+          - alert: SmartGardenOpenAlerts
+            expr: irrigation_open_alerts > 0
+            for: 1m
+            labels:
+              severity: warning
+            annotations:
+              summary: SmartGarden hat offene Systemalarme
+              description: Es liegen offene Watchdog- oder Systemalarme vor.
+          - alert: SmartGardenWatchdogHeartbeatStale
+            expr: irrigation_component_heartbeat_age_seconds{component="watchdog"} > 75
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: SmartGarden Watchdog Heartbeat ist alt
+              description: Der Watchdog meldet sich seit mehr als 75 Sekunden nicht mehr.
+          - alert: SmartGardenSchedulerHeartbeatStale
+            expr: irrigation_component_heartbeat_age_seconds{component="scheduler"} > 120
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: SmartGarden Scheduler Heartbeat ist alt
+              description: Der Scheduler meldet sich seit mehr als 120 Sekunden nicht mehr.
+          - alert: SmartGardenBackendMetricsDown
+            expr: up{job="smartgarden-backend"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: SmartGarden Backend-Metriken nicht erreichbar
+              description: Prometheus kann den SmartGarden Backend-Metrics-Endpunkt nicht scrapen.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: irrigation
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.55.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=7d
+            - --storage.tsdb.retention.size=256MB
+            - --web.enable-lifecycle
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: prometheus-data
+              mountPath: /prometheus
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+        - name: prometheus-data
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: irrigation
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: irrigation
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: mx.freenet.de:587
+      smtp_from: smartgarden-alerts@freenet.de
+      smtp_auth_username: smartgarden-alerts@freenet.de
+      smtp_auth_password_file: /etc/alertmanager/secrets/smtp-password
+      smtp_require_tls: true
+    route:
+      receiver: smartgarden-mail
+      group_by:
+        - alertname
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: smartgarden-mail
+        email_configs:
+          - to: grill.wanzleben@freenet.de,philipp.grill@freenet.de
+            send_resolved: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: irrigation
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/alertmanager
+            - --data.retention=120h
+          ports:
+            - name: http
+              containerPort: 9093
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 150m
+              memory: 160Mi
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          volumeMounts:
+            - name: alertmanager-config
+              mountPath: /etc/alertmanager
+              readOnly: true
+            - name: alertmanager-data
+              mountPath: /alertmanager
+            - name: alertmanager-secrets
+              mountPath: /etc/alertmanager/secrets
+              readOnly: true
+      volumes:
+        - name: alertmanager-config
+          configMap:
+            name: alertmanager-config
+        - name: alertmanager-data
+          emptyDir:
+            sizeLimit: 128Mi
+        - name: alertmanager-secrets
+          secret:
+            secretName: irrigation-secret
+            items:
+              - key: SMTP_PASSWORD
+                path: smtp-password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: irrigation
+spec:
+  selector:
+    app: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: http
