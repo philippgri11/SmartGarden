@@ -40,10 +40,12 @@ Kostenfreie Cloudflare-Bausteine:
 Aktueller Cloudflare-Stand am 19.05.2026:
 
 - Zone `gloriaundphilipp.de` ist aktiv.
-- Cloudflare Access ist im Account noch nicht aktiviert. Die API meldet: `Access is not enabled`.
-- Der aktuelle API-Token hat für Tunnel-Erstellung keine Schreibrechte gemeldet: `Authentication error`.
+- Cloudflare Access ist im Account aktiviert.
+- Team-Domain: `bitter-waterfall-8d76.cloudflareaccess.com`
+- One-Time-PIN Identity Provider ist vorhanden.
+- Der aktuell verbundene Cloudflare-API-Token hat für Access-App- und Tunnel-Erstellung noch keine Schreibrechte gemeldet: `Authentication error`.
 
-Deshalb sind Code, Manifeste und CI vorbereitet, aber Cloudflare muss einmal im Dashboard aktiviert und mit einem schreibfähigen Token finalisiert werden.
+Deshalb sind Code, Manifeste und CI vorbereitet, aber Cloudflare muss mit einem schreibfähigen Token oder im Dashboard finalisiert werden.
 
 Empfohlene Hostnames:
 
@@ -57,7 +59,14 @@ Cloudflare Access:
 3. Self-hosted Application für `smartgarden-api.gloriaundphilipp.de` anlegen.
 4. Allow Policy nur für deine E-Mail-Adresse, mit MFA.
 5. Audience Tag der API-App als `CLOUDFLARE_ACCESS_AUDIENCE` in `k8s/configmap.yaml` setzen.
-6. Team Domain als `CLOUDFLARE_ACCESS_TEAM_DOMAIN` setzen, z. B. `dein-team.cloudflareaccess.com`.
+6. Team Domain ist bereits als `CLOUDFLARE_ACCESS_TEAM_DOMAIN=bitter-waterfall-8d76.cloudflareaccess.com` gesetzt.
+
+Falls die Einrichtung per API laufen soll, braucht der verwendete Cloudflare-Token mindestens Schreibrechte für:
+
+- Cloudflare Access Applications und Policies
+- Cloudflare Tunnel
+- DNS Records für `gloriaundphilipp.de`
+- Workers Scripts/Workers Assets für das Remote-Frontend
 
 Cloudflare Tunnel:
 
