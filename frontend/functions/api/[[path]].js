@@ -38,7 +38,7 @@ export async function onRequest(context) {
   const targetUrl = new URL(`/api/${path}`, API_ORIGIN);
   targetUrl.search = requestUrl.search;
 
-  const uiAccessJwt = request.headers.get('Cf-Access-Jwt-Assertion');
+  const uiAccessJwt = request.headers.get('Cf-Access-Jwt-Assertion') || getCookie(request.headers.get('Cookie'), 'CF_Authorization');
   const headers = new Headers(request.headers);
   for (const header of HOP_BY_HOP_HEADERS) {
     headers.delete(header);
@@ -76,4 +76,17 @@ export async function onRequest(context) {
     statusText: response.statusText,
     headers: responseHeaders
   });
+}
+
+function getCookie(cookieHeader, name) {
+  if (!cookieHeader) {
+    return '';
+  }
+  for (const part of cookieHeader.split(';')) {
+    const [rawKey, ...rawValue] = part.trim().split('=');
+    if (rawKey === name) {
+      return rawValue.join('=');
+    }
+  }
+  return '';
 }
