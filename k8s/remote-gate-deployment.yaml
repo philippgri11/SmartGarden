@@ -39,6 +39,12 @@ spec:
                 secretKeyRef:
                   name: irrigation-secret
                   key: POSTGRES_PASSWORD
+            - name: CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health/ready

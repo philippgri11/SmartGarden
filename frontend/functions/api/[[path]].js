@@ -55,8 +55,6 @@ export async function onRequest(context) {
   if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
     headers.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
     headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
-    headers.set('X-SmartGarden-Access-Service-Token-Id', env.CF_ACCESS_CLIENT_ID);
-    headers.set('X-SmartGarden-Pages-Proxy-Id', env.CF_ACCESS_CLIENT_ID);
   }
 
   const response = await fetch(targetUrl, {

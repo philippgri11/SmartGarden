@@ -16,6 +16,7 @@ import { ManualRunControlComponent } from '../../shared/manual-run-control.compo
 import { WeatherAnalysisPanelComponent } from '../../shared/weather-analysis-panel.component';
 import { WeatherDecisionBadgeComponent } from '../../shared/weather-decision-badge.component';
 import { RuntimeFacade } from '../../state/runtime/runtime.facade';
+import { createTextTooltipContent } from './garden-map-tooltip.util';
 
 type LeafletLayer = L.Layer & { toGeoJSON: () => GeoJSON.Feature<GeoJSON.Geometry> };
 type MapInteractionMode = 'idle' | 'drawing' | 'editing' | 'deleting';
@@ -564,7 +565,7 @@ export class GardenMapComponent implements OnInit {
       this.drawnItems.addLayer(layer);
       this.layerByShapeId.set(shape.id, layer);
       const polygon = layer as L.Polygon;
-      polygon.bindTooltip(this.tooltipFor(shape), {
+      polygon.bindTooltip(createTextTooltipContent(this.tooltipFor(shape)), {
         permanent: true,
         direction: 'center',
         className: 'leaflet-tooltip-own',

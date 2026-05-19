@@ -58,6 +58,10 @@ fi
 if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN_VALUE" ]]; then
   CLOUDFLARE_TUNNEL_TOKEN_VALUE="${SMARTGARDEN_TUNNEL_TOKEN_BOOTSTRAP:-}"
 fi
+CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET_VALUE="${CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET:-${CF_ACCESS_CLIENT_SECRET:-}}"
+if [[ -z "$CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET_VALUE" ]]; then
+  CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
 
 secret_env_file="$(mktemp)"
 trap 'rm -f "$secret_env_file"' EXIT
@@ -67,6 +71,7 @@ chmod 600 "$secret_env_file"
   printf 'OPENAI_API_KEY=%s\n' "$OPENAI_SECRET_VALUE"
   printf 'SMTP_PASSWORD=%s\n' "$SMTP_SECRET_VALUE"
   printf 'CLOUDFLARE_TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN_VALUE"
+  printf 'CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET=%s\n' "$CLOUDFLARE_ACCESS_SERVICE_TOKEN_SECRET_VALUE"
 } > "$secret_env_file"
 
 apply_manifest "$ROOT_DIR/k8s/namespace.yaml"
