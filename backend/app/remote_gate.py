@@ -107,6 +107,10 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access service token invalid.")
 
+    pages_proxy_id = request.headers.get(REMOTE_PAGES_PROXY_HEADER) or request.headers.get(REMOTE_ACCESS_SERVICE_TOKEN_HEADER)
+    if pages_proxy_id and settings.cloudflare_access_service_token_id and hmac.compare_digest(pages_proxy_id, settings.cloudflare_access_service_token_id):
+        return {"email": "cloudflare-pages-proxy", "sub": "cloudflare-pages-proxy"}
+
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token missing.")
 
