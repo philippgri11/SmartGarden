@@ -121,3 +121,25 @@ def test_remote_gate_accepts_configured_access_service_token_id(monkeypatch):
 
     assert response.status_code == 200
     assert captured["identity"]["email"] == "cloudflare-pages-proxy"
+
+
+def test_remote_gate_accepts_neutral_pages_proxy_header(monkeypatch):
+    captured = {}
+
+    async def fake_forward(request, path, body, identity):
+        captured["identity"] = identity
+        captured["forwarded_headers"] = dict(request.headers)
+        return Response(content=b'{"ok": true}', media_type="application/json")
+
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_team_domain", "example.cloudflareaccess.com")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_audience", "aud-1")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_service_token_id", "pages-token.access")
+    monkeypatch.setattr(remote_gate, "forward_request", fake_forward)
+
+    with TestClient(remote_gate.app) as client:
+        response = client.get("/api/runtime", headers={"X-SmartGarden-Pages-Proxy-Id": "pages-token.access"})
+
+    assert response.status_code == 200
+    assert captured["identity"]["email"] == "cloudflare-pages-proxy"
+    assert "x-smartgarden-pages-proxy-id" in captured["forwarded_headers"]
