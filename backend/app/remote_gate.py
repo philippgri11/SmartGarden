@@ -39,6 +39,7 @@ HOP_BY_HOP_HEADERS = {
 
 ZONE_HARDWARE_FIELDS = {"gpio_chip", "gpio_line"}
 REMOTE_ACCESS_JWT_HEADER = "X-SmartGarden-Access-Jwt"
+REMOTE_ACCESS_SERVICE_TOKEN_HEADER = "X-SmartGarden-Access-Service-Token-Id"
 
 
 @app.get("/health/live")
@@ -94,7 +95,7 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         )
 
     token = request.headers.get(REMOTE_ACCESS_JWT_HEADER) or request.headers.get("Cf-Access-Jwt-Assertion")
-    service_token_id = request.headers.get("Cf-Access-Client-Id")
+    service_token_id = request.headers.get(REMOTE_ACCESS_SERVICE_TOKEN_HEADER) or request.headers.get("Cf-Access-Client-Id")
     if (
         service_token_id
         and settings.cloudflare_access_service_token_id
@@ -243,6 +244,7 @@ async def forward_request(request: Request, path: str, body: bytes, identity: di
         if key.lower() not in HOP_BY_HOP_HEADERS
         and not key.lower().startswith("cf-access")
         and key.lower() != REMOTE_ACCESS_JWT_HEADER.lower()
+        and key.lower() != REMOTE_ACCESS_SERVICE_TOKEN_HEADER.lower()
     }
     headers["x-smartgarden-remote-user"] = str(identity.get("email") or identity.get("sub") or "unknown")
     headers["x-smartgarden-remote-gate"] = "cloudflare-access"
