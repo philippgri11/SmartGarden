@@ -43,9 +43,13 @@ Aktueller Cloudflare-Stand am 19.05.2026:
 - Cloudflare Access ist im Account aktiviert.
 - Team-Domain: `bitter-waterfall-8d76.cloudflareaccess.com`
 - One-Time-PIN Identity Provider ist vorhanden.
-- Der aktuell verbundene Cloudflare-API-Token hat für Access-App- und Tunnel-Erstellung noch keine Schreibrechte gemeldet: `Authentication error`.
+- Remote-Frontend Access App: `smartgarden.gloriaundphilipp.de`
+- Remote-API Access App: `smartgarden-api.gloriaundphilipp.de`
+- Remote-API Audience: `c08e88defe6a5153fde3daef99bc716ca156140373fb9a063e45650dbc8e5e2d`
+- Cloudflare Tunnel: `smartgarden-pi`
+- Remote-API DNS: `smartgarden-api.gloriaundphilipp.de` als proxied CNAME auf den Tunnel.
 
-Deshalb sind Code, Manifeste und CI vorbereitet, aber Cloudflare muss mit einem schreibfähigen Token oder im Dashboard finalisiert werden.
+Der Tunnel-Token wurde geprüft, aber nicht ins Repository geschrieben. Er muss als Kubernetes Secret `CLOUDFLARE_TUNNEL_TOKEN` in `irrigation-secret` gesetzt werden, sobald Zugriff auf den Cluster möglich ist.
 
 Empfohlene Hostnames:
 
@@ -58,7 +62,7 @@ Cloudflare Access:
 2. Self-hosted Application für `smartgarden.gloriaundphilipp.de` anlegen.
 3. Self-hosted Application für `smartgarden-api.gloriaundphilipp.de` anlegen.
 4. Allow Policy nur für deine E-Mail-Adresse, mit MFA.
-5. Audience Tag der API-App als `CLOUDFLARE_ACCESS_AUDIENCE` in `k8s/configmap.yaml` setzen.
+5. Audience Tag der API-App ist als `CLOUDFLARE_ACCESS_AUDIENCE` in `k8s/configmap.yaml` gesetzt.
 6. Team Domain ist bereits als `CLOUDFLARE_ACCESS_TEAM_DOMAIN=bitter-waterfall-8d76.cloudflareaccess.com` gesetzt.
 
 Falls die Einrichtung per API laufen soll, braucht der verwendete Cloudflare-Token mindestens Schreibrechte für:
@@ -70,8 +74,8 @@ Falls die Einrichtung per API laufen soll, braucht der verwendete Cloudflare-Tok
 
 Cloudflare Tunnel:
 
-1. Tunnel `smartgarden-pi` anlegen.
-2. Public Hostname `smartgarden-api.gloriaundphilipp.de` auf `http://remote-gate.irrigation.svc.cluster.local:8000` routen.
+1. Tunnel `smartgarden-pi` ist angelegt.
+2. Public Hostname `smartgarden-api.gloriaundphilipp.de` ist auf `http://remote-gate.irrigation.svc.cluster.local:8000` geroutet.
 3. Tunnel Token als Kubernetes Secret `CLOUDFLARE_TUNNEL_TOKEN` in `irrigation-secret` setzen.
 4. Beim nächsten Deployment wird `k8s/cloudflared-deployment.yaml` angewendet, sobald der Token im Secret existiert.
 
