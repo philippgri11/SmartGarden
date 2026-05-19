@@ -26,6 +26,7 @@ export async function onRequest(context) {
   const targetUrl = new URL(`/api/${path}`, API_ORIGIN);
   targetUrl.search = requestUrl.search;
 
+  const uiAccessJwt = request.headers.get('Cf-Access-Jwt-Assertion');
   const headers = new Headers(request.headers);
   for (const header of HOP_BY_HOP_HEADERS) {
     headers.delete(header);
@@ -34,6 +35,9 @@ export async function onRequest(context) {
     if (header.toLowerCase().startsWith('cf-access')) {
       headers.delete(header);
     }
+  }
+  if (uiAccessJwt) {
+    headers.set('X-SmartGarden-Access-Jwt', uiAccessJwt);
   }
 
   if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {

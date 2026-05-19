@@ -38,6 +38,7 @@ HOP_BY_HOP_HEADERS = {
 }
 
 ZONE_HARDWARE_FIELDS = {"gpio_chip", "gpio_line"}
+REMOTE_ACCESS_JWT_HEADER = "X-SmartGarden-Access-Jwt"
 
 
 @app.get("/health/live")
@@ -81,14 +82,18 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         return {"email": "local-dev", "sub": "local-dev"}
 
     team_domain = settings.cloudflare_access_team_domain
-    audience = settings.cloudflare_access_audience
-    if not team_domain or not audience:
+    audiences = [
+        item.strip()
+        for item in (settings.cloudflare_access_audience or "").split(",")
+        if item.strip()
+    ]
+    if not team_domain or not audiences:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cloudflare Access is required but not configured on the remote gate.",
         )
 
-    token = request.headers.get("Cf-Access-Jwt-Assertion")
+    token = request.headers.get(REMOTE_ACCESS_JWT_HEADER) or request.headers.get("Cf-Access-Jwt-Assertion")
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token missing.")
 
@@ -106,7 +111,7 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=audience,
+            audience=audiences,
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token invalid.") from exc
@@ -227,7 +232,9 @@ async def forward_request(request: Request, path: str, body: bytes, identity: di
     headers = {
         key: value
         for key, value in request.headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS and not key.lower().startswith("cf-access")
+        if key.lower() not in HOP_BY_HOP_HEADERS
+        and not key.lower().startswith("cf-access")
+        and key.lower() != REMOTE_ACCESS_JWT_HEADER.lower()
     }
     headers["x-smartgarden-remote-user"] = str(identity.get("email") or identity.get("sub") or "unknown")
     headers["x-smartgarden-remote-gate"] = "cloudflare-access"

@@ -71,3 +71,38 @@ def test_remote_gate_blocks_run_all_by_default(monkeypatch):
 
     assert response.status_code == 403
     assert "Gesamtbewässerung" in response.json()["detail"]
+
+
+def test_remote_gate_requires_access_token_when_enforced(monkeypatch):
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_team_domain", "example.cloudflareaccess.com")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_audience", "aud-1,aud-2")
+    client = TestClient(remote_gate.app)
+
+    response = client.get("/api/runtime")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Cloudflare Access token missing."
+
+
+def test_remote_gate_accepts_forwarded_pages_access_jwt(monkeypatch):
+    captured = {}
+
+    def fake_verify(request):
+        assert request.headers["X-SmartGarden-Access-Jwt"] == "ui-jwt"
+        return {"email": "user@example.org"}
+
+    async def fake_forward(request, path, body, identity):
+        captured["identity"] = identity
+        captured["forwarded_headers"] = dict(request.headers)
+        return Response(content=b'{"ok": true}', media_type="application/json")
+
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
+    monkeypatch.setattr(remote_gate, "verify_cloudflare_access", fake_verify)
+    monkeypatch.setattr(remote_gate, "forward_request", fake_forward)
+    client = TestClient(remote_gate.app)
+
+    response = client.get("/api/runtime", headers={"X-SmartGarden-Access-Jwt": "ui-jwt"})
+
+    assert response.status_code == 200
+    assert captured["identity"]["email"] == "user@example.org"
