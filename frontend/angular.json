@@ -28,11 +28,11 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "buildTarget": "irrigation-control-frontend:build"
+            "buildTarget": "irrigation-control-frontend:build",
+            "proxyConfig": "proxy.conf.json"
           }
         }
       }
     }
   }
 }
-

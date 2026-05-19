@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import time
-from datetime import UTC, datetime
+import time as time_module
+from datetime import UTC, datetime, time as datetime_time
 
 from sqlalchemy import text
 
@@ -13,7 +13,7 @@ from app.application.irrigation_projection_service import IrrigationProjectionSe
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import get_settings
-from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan
+from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan, expand_time_windows, WINDOW_STARTS
 from app.domain.models import RunStatus, TriggerType
 from app.domain.services import current_schedule_slot
 from app.domain.timezone import now_in_app_timezone
@@ -128,9 +128,9 @@ class SchedulerRunner:
             )
             if not decision.scheduled_at:
                 continue
+            if self._adaptive_window_exists(session, zone_id=zone.id, plan=plan, slot=decision.scheduled_at):
+                continue
             if active_sequence and decision.scheduled_at <= active_sequence[1]:
-                if self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
-                    continue
                 skipped_run = runs.create_planned_run(
                     zone_id=zone.id,
                     schedule_id=None,
@@ -145,8 +145,6 @@ class SchedulerRunner:
                 skipped_run.finished_at = now
                 continue
             if not decision.should_plan:
-                if self._adaptive_slot_exists(session, zone_id=zone.id, slot=decision.scheduled_at):
-                    continue
                 skipped_run = runs.create_planned_run(
                     zone_id=zone.id,
                     schedule_id=None,
@@ -164,8 +162,6 @@ class SchedulerRunner:
                 duration_minutes=decision.duration_minutes,
                 zone_id=zone.id,
             )
-            if self._adaptive_slot_exists(session, zone_id=zone.id, slot=planned_start):
-                continue
             runs.create_planned_run(
                 zone_id=zone.id,
                 schedule_id=None,
@@ -176,7 +172,8 @@ class SchedulerRunner:
                 reason=f"{ADAPTIVE_REASON_PREFIX} {decision.reason}",
             )
 
-    def _adaptive_slot_exists(self, session, *, zone_id: int, slot: datetime) -> bool:
+    def _adaptive_window_exists(self, session, *, zone_id: int, plan: AdaptiveIrrigationPlan, slot: datetime) -> bool:
+        window_end = self._adaptive_window_end(plan=plan, slot=slot)
         return (
             session.query(orm.WateringRun.id)
             .filter(
@@ -184,12 +181,32 @@ class SchedulerRunner:
                 orm.WateringRun.schedule_id.is_(None),
                 orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
                 orm.WateringRun.scheduled_for == slot.date(),
-                orm.WateringRun.scheduled_time == slot.time(),
+                orm.WateringRun.scheduled_time >= slot.time(),
+                orm.WateringRun.scheduled_time < window_end.time(),
                 orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+                orm.WateringRun.status.in_(
+                    [
+                        RunStatus.PLANNED.value,
+                        RunStatus.RUNNING.value,
+                        RunStatus.COMPLETED.value,
+                        RunStatus.SKIPPED.value,
+                    ]
+                ),
             )
             .first()
             is not None
         )
+
+    def _adaptive_window_end(self, *, plan: AdaptiveIrrigationPlan, slot: datetime) -> datetime:
+        same_day_starts = sorted(
+            datetime.combine(slot.date(), start_time, tzinfo=slot.tzinfo)
+            for window in expand_time_windows(plan)
+            if (start_time := WINDOW_STARTS.get(window)) is not None
+        )
+        for candidate in same_day_starts:
+            if candidate > slot:
+                return candidate
+        return datetime.combine(slot.date(), datetime_time.max, tzinfo=slot.tzinfo)
 
     def _last_adaptive_run_at(self, session, *, zone_id: int) -> datetime | None:
         run = (
@@ -260,4 +277,4 @@ class SchedulerRunner:
                 self.tick()
             except Exception:  # noqa: BLE001
                 logger.exception("scheduler loop error")
-            time.sleep(self.settings.scheduler_poll_seconds)
+            time_module.sleep(self.settings.scheduler_poll_seconds)
