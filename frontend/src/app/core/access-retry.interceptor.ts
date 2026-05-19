@@ -1,36 +1,31 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
-import { catchError, retry, throwError, timer } from 'rxjs';
+import { from, retry, switchMap, throwError, timer } from 'rxjs';
 
 const REMOTE_UI_HOST = 'smartgarden.gloriaundphilipp.de';
 
 export const accessRetryInterceptor: HttpInterceptorFn = (request, next) => {
-  if (!isRemoteReadRequest(request.method, request.url)) {
+  if (!isRemoteApiRequest(request.url)) {
     return next(request);
   }
 
-  return next(request).pipe(
+  return from(ensureRemoteProxySession()).pipe(
+    switchMap(() => next(request)),
     retry({
-      count: 2,
-      delay: (error, retryCount) => {
+      count: request.method.toUpperCase() === 'GET' ? 1 : 0,
+      delay: (error) => {
         if (!isLikelyAccessRefreshError(error)) {
           return throwError(() => error);
         }
-        return timer(retryCount === 1 ? 600 : 1600);
+        proxySessionPromise = undefined;
+        return from(ensureRemoteProxySession()).pipe(switchMap(() => timer(300)));
       }
-    }),
-    catchError((error) => {
-      if (isLikelyAccessRefreshError(error)) {
-        triggerAccessReauthentication();
-      }
-      return throwError(() => error);
     })
   );
 };
 
-function isRemoteReadRequest(method: string, url: string): boolean {
-  if (method.toUpperCase() !== 'GET') {
-    return false;
-  }
+let proxySessionPromise: Promise<void> | undefined;
+
+function isRemoteApiRequest(url: string): boolean {
   if (globalThis.location?.hostname !== REMOTE_UI_HOST) {
     return false;
   }
@@ -56,31 +51,16 @@ function isLikelyAccessRefreshError(error: unknown): boolean {
   return error.status === 0;
 }
 
-function triggerAccessReauthentication(): void {
-  const now = Date.now();
-  const storageKey = 'smartgarden:last-access-reauth';
-  const lastRedirect = Number(readSessionValue(storageKey) || '0');
-  if (now - lastRedirect < 10000) {
-    return;
-  }
+function ensureRemoteProxySession(): Promise<void> {
+  proxySessionPromise ??= fetch('/auth/session', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store'
+  }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Remote proxy session failed with ${response.status}`);
+    }
+  });
 
-  writeSessionValue(storageKey, String(now));
-  globalThis.location?.assign(globalThis.location.href);
-}
-
-function readSessionValue(key: string): string | null {
-  try {
-    return globalThis.sessionStorage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSessionValue(key: string, value: string): void {
-  try {
-    globalThis.sessionStorage?.setItem(key, value);
-  } catch {
-    // If sessionStorage is unavailable, reloading once is still preferable to
-    // leaving the remote UI in a half-authenticated state.
-  }
+  return proxySessionPromise;
 }

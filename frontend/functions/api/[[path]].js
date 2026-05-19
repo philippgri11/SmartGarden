@@ -1,3 +1,5 @@
+import { hasValidSession } from '../_shared/session.js';
+
 const API_ORIGIN = 'https://smartgarden-api.gloriaundphilipp.de';
 const REMOTE_UI_HOST = 'smartgarden.gloriaundphilipp.de';
 
@@ -20,6 +22,16 @@ export async function onRequest(context) {
   const requestUrl = new URL(request.url);
   if (requestUrl.hostname !== REMOTE_UI_HOST) {
     return new Response('Not found', { status: 404 });
+  }
+
+  if (!(await hasValidSession(request, env))) {
+    return new Response('Remote proxy session missing', {
+      status: 401,
+      headers: {
+        'content-type': 'text/plain',
+        'cache-control': 'no-store'
+      }
+    });
   }
 
   const path = Array.isArray(params.path) ? params.path.join('/') : params.path || '';
