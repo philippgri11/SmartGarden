@@ -135,6 +135,8 @@ jobs:
           };
           EOF
           cat > dist/irrigation-control-frontend/browser/_headers <<EOF
+          /*
+            Cache-Control: no-store, no-cache, must-revalidate, max-age=0
           /runtime-config.js
             Cache-Control: no-store, no-cache, must-revalidate, max-age=0
           EOF
