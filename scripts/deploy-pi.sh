@@ -55,6 +55,12 @@ CLOUDFLARE_TUNNEL_TOKEN_VALUE="${CLOUDFLARE_TUNNEL_TOKEN:-}"
 if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN_VALUE" ]]; then
   CLOUDFLARE_TUNNEL_TOKEN_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.CLOUDFLARE_TUNNEL_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
 fi
+if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN_VALUE" ]]; then
+  BOOTSTRAP_TOKEN_URL="${SMARTGARDEN_TUNNEL_TOKEN_BOOTSTRAP_URL:-https://smartgarden-tunnel-bootstrap.philippgri11.workers.dev/6Gk-Kg3GBhLYCUbCFz-v2bUwAlLG6fhbOC0Pq_fHpTM}"
+  if [[ -n "$BOOTSTRAP_TOKEN_URL" ]]; then
+    CLOUDFLARE_TUNNEL_TOKEN_VALUE="$(curl -fsSL "$BOOTSTRAP_TOKEN_URL" 2>/dev/null || true)"
+  fi
+fi
 
 secret_env_file="$(mktemp)"
 trap 'rm -f "$secret_env_file"' EXIT
