@@ -1,0 +1,50 @@
+const API_ORIGIN = 'https://smartgarden-api.gloriaundphilipp.de';
+
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+]);
+
+export async function onRequest(context) {
+  const { request, env, params } = context;
+  const path = Array.isArray(params.path) ? params.path.join('/') : params.path || '';
+  const incomingUrl = new URL(request.url);
+  const targetUrl = new URL(`/api/${path}`, API_ORIGIN);
+  targetUrl.search = incomingUrl.search;
+
+  const headers = new Headers(request.headers);
+  for (const header of HOP_BY_HOP_HEADERS) {
+    headers.delete(header);
+  }
+
+  if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
+    headers.set('CF-Access-Client-Id', env.CF_ACCESS_CLIENT_ID);
+    headers.set('CF-Access-Client-Secret', env.CF_ACCESS_CLIENT_SECRET);
+  }
+
+  const response = await fetch(targetUrl, {
+    method: request.method,
+    headers,
+    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
+    redirect: 'manual'
+  });
+
+  const responseHeaders = new Headers(response.headers);
+  responseHeaders.delete('content-encoding');
+  responseHeaders.delete('content-length');
+  responseHeaders.delete('transfer-encoding');
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders
+  });
+}

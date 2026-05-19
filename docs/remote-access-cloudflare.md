@@ -51,6 +51,8 @@ Aktueller Cloudflare-Stand am 19.05.2026:
 - Remote-Frontend: Cloudflare Pages Projekt `smartgarden-remote-ui`
 - Remote-Frontend DNS: `smartgarden.gloriaundphilipp.de` als proxied CNAME auf `smartgarden-remote-ui.pages.dev`.
 - GitHub Actions Secret `CLOUDFLARE_API_TOKEN` ist fuer den Pages-Deploy gesetzt.
+- Remote-Frontend nutzt im Browser denselben Host mit `/api/*`. Eine Cloudflare Pages Function leitet diese Requests serverseitig an `smartgarden-api.gloriaundphilipp.de` weiter.
+- Die Pages Function authentifiziert sich an der API-Access-App mit einem Access Service Token. Dadurch muss der Browser nicht separat gegen `smartgarden-api.gloriaundphilipp.de` eingeloggt werden.
 
 Der Tunnel-Token wurde geprüft, aber nicht ins Repository geschrieben. Er muss als Kubernetes Secret `CLOUDFLARE_TUNNEL_TOKEN` in `irrigation-secret` gesetzt werden, sobald Zugriff auf den Cluster möglich ist.
 
@@ -88,7 +90,8 @@ Remote-Frontend:
 2. GitHub Variable `SMARTGARDEN_REMOTE_API_BASE_URL=https://smartgarden-api.gloriaundphilipp.de/api` ist gesetzt.
 3. Auf `main` pusht die CI nach gruenen Backend- und Frontend-Tests das statische Remote-Frontend zu Cloudflare Pages.
 4. Feature-Branches werden nicht automatisch zu Cloudflare deployed. Sie koennen bei Bedarf manuell per Workflow/Pages-Deploy veroeffentlicht werden.
-5. `runtime-config.js` wird im CI-Build so geschrieben, dass die Remote-App `https://smartgarden-api.gloriaundphilipp.de/api` nutzt.
+5. `runtime-config.js` wird im CI-Build so geschrieben, dass die Remote-App same-origin `/api` nutzt.
+6. `frontend/functions/api/[[path]].js` proxyed `/api/*` zur Remote-API und setzt serverseitig die Cloudflare-Access-Service-Token-Header.
 
 ## Betriebshinweis
 
