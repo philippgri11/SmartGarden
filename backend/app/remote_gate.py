@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import re
 from typing import Any
@@ -41,6 +42,8 @@ ZONE_HARDWARE_FIELDS = {"gpio_chip", "gpio_line"}
 REMOTE_ACCESS_JWT_HEADER = "X-SmartGarden-Access-Jwt"
 REMOTE_ACCESS_SERVICE_TOKEN_HEADER = "X-SmartGarden-Access-Service-Token-Id"
 REMOTE_PAGES_PROXY_HEADER = "X-SmartGarden-Pages-Proxy-Id"
+CLOUDFLARE_SERVICE_TOKEN_ID_HEADER = "Cf-Access-Client-Id"
+CLOUDFLARE_SERVICE_TOKEN_SECRET_HEADER = "Cf-Access-Client-Secret"
 
 
 @app.get("/health/live")
@@ -96,17 +99,13 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         )
 
     token = request.headers.get(REMOTE_ACCESS_JWT_HEADER) or request.headers.get("Cf-Access-Jwt-Assertion")
-    service_token_id = (
-        request.headers.get(REMOTE_PAGES_PROXY_HEADER)
-        or request.headers.get(REMOTE_ACCESS_SERVICE_TOKEN_HEADER)
-        or request.headers.get("Cf-Access-Client-Id")
-    )
-    if (
-        service_token_id
-        and settings.cloudflare_access_service_token_id
-        and service_token_id == settings.cloudflare_access_service_token_id
-    ):
-        return {"email": "cloudflare-pages-proxy", "sub": "cloudflare-pages-proxy"}
+    service_token_id = request.headers.get(CLOUDFLARE_SERVICE_TOKEN_ID_HEADER)
+    service_token_secret = request.headers.get(CLOUDFLARE_SERVICE_TOKEN_SECRET_HEADER)
+    if service_token_id or service_token_secret:
+        if has_valid_service_token_pair(service_token_id, service_token_secret):
+            return {"email": "cloudflare-pages-proxy", "sub": "cloudflare-pages-proxy"}
+        if not token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access service token invalid.")
 
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token missing.")
@@ -129,6 +128,14 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token invalid.") from exc
+
+
+def has_valid_service_token_pair(service_token_id: str | None, service_token_secret: str | None) -> bool:
+    expected_id = settings.cloudflare_access_service_token_id
+    expected_secret = settings.cloudflare_access_service_token_secret
+    if not service_token_id or not service_token_secret or not expected_id or not expected_secret:
+        return False
+    return hmac.compare_digest(service_token_id, expected_id) and hmac.compare_digest(service_token_secret, expected_secret)
 
 
 async def decide_request(request: Request, path: str) -> GateDecision:
