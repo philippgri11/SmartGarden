@@ -173,6 +173,10 @@ export class ApiService {
   }
 
   private resolveBaseUrl(): string {
+    if (globalThis.location?.hostname === 'smartgarden.gloriaundphilipp.de') {
+      return '/api';
+    }
+
     const config = (globalThis as typeof globalThis & {
       __SMARTGARDEN_CONFIG__?: { apiBaseUrl?: string };
     }).__SMARTGARDEN_CONFIG__;

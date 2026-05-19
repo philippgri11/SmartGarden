@@ -133,6 +133,10 @@ jobs:
             apiBaseUrl: "/api"
           };
           EOF
+          cat > dist/irrigation-control-frontend/browser/_headers <<EOF
+          /runtime-config.js
+            Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+          EOF
 
       - name: Deploy remote frontend to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
