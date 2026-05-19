@@ -94,6 +94,14 @@ def verify_cloudflare_access(request: Request) -> dict[str, Any]:
         )
 
     token = request.headers.get(REMOTE_ACCESS_JWT_HEADER) or request.headers.get("Cf-Access-Jwt-Assertion")
+    service_token_id = request.headers.get("Cf-Access-Client-Id")
+    if (
+        service_token_id
+        and settings.cloudflare_access_service_token_id
+        and service_token_id == settings.cloudflare_access_service_token_id
+    ):
+        return {"email": "cloudflare-pages-proxy", "sub": "cloudflare-pages-proxy"}
+
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cloudflare Access token missing.")
 

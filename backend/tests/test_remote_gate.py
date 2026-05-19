@@ -73,6 +73,7 @@ def test_remote_gate_requires_access_token_when_enforced(monkeypatch):
     monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
     monkeypatch.setattr(remote_gate.settings, "cloudflare_access_team_domain", "example.cloudflareaccess.com")
     monkeypatch.setattr(remote_gate.settings, "cloudflare_access_audience", "aud-1,aud-2")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_service_token_id", None)
     with TestClient(remote_gate.app) as client:
         response = client.get("/api/runtime")
 
@@ -100,3 +101,23 @@ def test_remote_gate_accepts_forwarded_pages_access_jwt(monkeypatch):
 
     assert response.status_code == 200
     assert captured["identity"]["email"] == "user@example.org"
+
+
+def test_remote_gate_accepts_configured_access_service_token_id(monkeypatch):
+    captured = {}
+
+    async def fake_forward(request, path, body, identity):
+        captured["identity"] = identity
+        return Response(content=b'{"ok": true}', media_type="application/json")
+
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_team_domain", "example.cloudflareaccess.com")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_audience", "aud-1")
+    monkeypatch.setattr(remote_gate.settings, "cloudflare_access_service_token_id", "pages-token.access")
+    monkeypatch.setattr(remote_gate, "forward_request", fake_forward)
+
+    with TestClient(remote_gate.app) as client:
+        response = client.get("/api/runtime", headers={"CF-Access-Client-Id": "pages-token.access"})
+
+    assert response.status_code == 200
+    assert captured["identity"]["email"] == "cloudflare-pages-proxy"

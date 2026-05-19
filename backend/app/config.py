@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     cloudflare_access_enforce: bool = True
     cloudflare_access_team_domain: str | None = None
     cloudflare_access_audience: str | None = None
+    cloudflare_access_service_token_id: str | None = None
 
     database_url: str | None = None
     database_host: str = "postgres"
