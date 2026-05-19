@@ -30,13 +30,15 @@ def exec_process(command: Sequence[str]) -> None:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        raise SystemExit("usage: python -m app.entrypoint [api|worker|watchdog|seed-local]")
+        raise SystemExit("usage: python -m app.entrypoint [api|remote-gate|worker|watchdog|seed-local]")
 
     target = sys.argv[1]
     run_migrations()
 
     if target == "api":
         exec_process(["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"])
+    if target == "remote-gate":
+        exec_process(["uvicorn", "app.remote_gate:app", "--host", "0.0.0.0", "--port", "8000"])
     if target == "worker":
         exec_process([sys.executable, "-m", "app.worker"])
     if target == "watchdog":

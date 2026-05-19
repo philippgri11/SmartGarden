@@ -28,7 +28,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = '/api';
+  private readonly baseUrl = this.resolveBaseUrl();
 
   getZones(): Observable<Zone[]> {
     return this.http.get<Zone[]>(`${this.baseUrl}/zones`);
@@ -170,5 +170,12 @@ export class ApiService {
 
   deleteMapShape(id: number): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/maps/shapes/${id}`);
+  }
+
+  private resolveBaseUrl(): string {
+    const config = (globalThis as typeof globalThis & {
+      __SMARTGARDEN_CONFIG__?: { apiBaseUrl?: string };
+    }).__SMARTGARDEN_CONFIG__;
+    return config?.apiBaseUrl || '/api';
   }
 }

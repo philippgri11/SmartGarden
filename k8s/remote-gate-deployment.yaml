@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remote-gate
+  namespace: irrigation
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: remote-gate
+  template:
+    metadata:
+      labels:
+        app: remote-gate
+    spec:
+      containers:
+        - name: remote-gate
+          image: irrigation-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.entrypoint", "remote-gate"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: irrigation-config
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: irrigation-secret
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

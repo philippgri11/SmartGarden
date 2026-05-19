@@ -51,6 +51,10 @@ SMTP_SECRET_VALUE="${SMTP_PASSWORD:-}"
 if [[ -z "$SMTP_SECRET_VALUE" ]]; then
   SMTP_SECRET_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.SMTP_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)"
 fi
+CLOUDFLARE_TUNNEL_TOKEN_VALUE="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN_VALUE" ]]; then
+  CLOUDFLARE_TUNNEL_TOKEN_VALUE="$($KUBECTL -n irrigation get secret irrigation-secret -o jsonpath='{.data.CLOUDFLARE_TUNNEL_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
 
 secret_env_file="$(mktemp)"
 trap 'rm -f "$secret_env_file"' EXIT
@@ -59,6 +63,7 @@ chmod 600 "$secret_env_file"
   printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_SECRET_VALUE"
   printf 'OPENAI_API_KEY=%s\n' "$OPENAI_SECRET_VALUE"
   printf 'SMTP_PASSWORD=%s\n' "$SMTP_SECRET_VALUE"
+  printf 'CLOUDFLARE_TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN_VALUE"
 } > "$secret_env_file"
 
 apply_manifest "$ROOT_DIR/k8s/namespace.yaml"
@@ -71,9 +76,16 @@ apply_manifest "$ROOT_DIR/k8s/postgres-service.yaml"
 apply_manifest "$ROOT_DIR/k8s/postgres-statefulset.yaml"
 apply_manifest "$ROOT_DIR/k8s/backend-service.yaml"
 apply_deployment_manifest "$ROOT_DIR/k8s/backend-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
+apply_manifest "$ROOT_DIR/k8s/remote-gate-service.yaml"
+apply_deployment_manifest "$ROOT_DIR/k8s/remote-gate-deployment.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
 apply_deployment_manifest "$ROOT_DIR/k8s/scheduler-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
 apply_deployment_manifest "$ROOT_DIR/k8s/watchdog-deployment-pi.yaml" "$BACKEND_IMAGE" "irrigation-backend:latest"
 apply_manifest "$ROOT_DIR/k8s/prometheus.yaml"
 apply_manifest "$ROOT_DIR/k8s/frontend-service.yaml"
 apply_deployment_manifest "$ROOT_DIR/k8s/frontend-deployment.yaml" "$FRONTEND_IMAGE" "irrigation-frontend:latest"
 apply_manifest "$ROOT_DIR/k8s/ingress.yaml"
+if [[ -n "$CLOUDFLARE_TUNNEL_TOKEN_VALUE" ]]; then
+  apply_manifest "$ROOT_DIR/k8s/cloudflared-deployment.yaml"
+else
+  echo "CLOUDFLARE_TUNNEL_TOKEN is not set; skipping cloudflared deployment."
+fi

@@ -32,8 +32,12 @@ FRONTEND_IMAGE="${FRONTEND_IMAGE_REPOSITORY}:${SHA}"
 
 KUBECTL="$KUBECTL" BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" bash "$ROOT_DIR/scripts/deploy-pi.sh"
 $KUBECTL -n irrigation rollout status deployment/backend --timeout=180s
+$KUBECTL -n irrigation rollout status deployment/remote-gate --timeout=180s
 $KUBECTL -n irrigation rollout status deployment/scheduler --timeout=180s
 $KUBECTL -n irrigation rollout status deployment/frontend --timeout=180s
+if $KUBECTL -n irrigation get deployment/cloudflared >/dev/null 2>&1; then
+  $KUBECTL -n irrigation rollout status deployment/cloudflared --timeout=180s
+fi
 
 echo "Deployed $BRANCH at $SHA"
 echo "Backend image: $BACKEND_IMAGE"

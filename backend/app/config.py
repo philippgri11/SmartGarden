@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:4200"
     app_timezone: str = "Europe/Berlin"
 
+    remote_gate_internal_api_base_url: str = "http://backend:8000"
+    remote_gate_max_manual_duration_minutes: int = 10
+    remote_gate_allow_run_all: bool = False
+    cloudflare_access_enforce: bool = True
+    cloudflare_access_team_domain: str | None = None
+    cloudflare_access_audience: str | None = None
+
     database_url: str | None = None
     database_host: str = "postgres"
     database_port: int = 5432

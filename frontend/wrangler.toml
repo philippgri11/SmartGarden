@@ -1,0 +1,6 @@
+name = "smartgarden-frontend"
+compatibility_date = "2026-05-19"
+
+[assets]
+directory = "./dist/irrigation-control-frontend/browser"
+not_found_handling = "single-page-application"
