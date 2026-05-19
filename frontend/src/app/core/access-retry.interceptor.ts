@@ -1,7 +1,7 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { from, retry, switchMap, throwError, timer } from 'rxjs';
 
-const REMOTE_UI_HOST = 'smartgarden.gloriaundphilipp.de';
+const REMOTE_UI_HOSTS = new Set(['smartgarden.gloriaundphilipp.de', 'mach-nass.de']);
 
 export const accessRetryInterceptor: HttpInterceptorFn = (request, next) => {
   if (!isRemoteApiRequest(request.url)) {
@@ -26,7 +26,7 @@ export const accessRetryInterceptor: HttpInterceptorFn = (request, next) => {
 let proxySessionPromise: Promise<void> | undefined;
 
 function isRemoteApiRequest(url: string): boolean {
-  if (globalThis.location?.hostname !== REMOTE_UI_HOST) {
+  if (!REMOTE_UI_HOSTS.has(globalThis.location?.hostname)) {
     return false;
   }
   if (url.startsWith('/api/')) {
@@ -35,7 +35,7 @@ function isRemoteApiRequest(url: string): boolean {
 
   try {
     const parsed = new URL(url, globalThis.location?.origin);
-    return parsed.hostname === REMOTE_UI_HOST && parsed.pathname.startsWith('/api/');
+    return REMOTE_UI_HOSTS.has(parsed.hostname) && parsed.pathname.startsWith('/api/');
   } catch {
     return false;
   }

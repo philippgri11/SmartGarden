@@ -1,7 +1,7 @@
 import { hasValidSession } from '../_shared/session.js';
 
 const API_ORIGIN = 'https://smartgarden-api.gloriaundphilipp.de';
-const REMOTE_UI_HOST = 'smartgarden.gloriaundphilipp.de';
+const REMOTE_UI_HOSTS = new Set(['smartgarden.gloriaundphilipp.de', 'mach-nass.de']);
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -20,7 +20,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 export async function onRequest(context) {
   const { request, env, params } = context;
   const requestUrl = new URL(request.url);
-  if (requestUrl.hostname !== REMOTE_UI_HOST) {
+  if (!REMOTE_UI_HOSTS.has(requestUrl.hostname)) {
     return new Response('Not found', { status: 404 });
   }
 

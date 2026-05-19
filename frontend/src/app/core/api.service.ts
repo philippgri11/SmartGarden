@@ -173,7 +173,7 @@ export class ApiService {
   }
 
   private resolveBaseUrl(): string {
-    if (globalThis.location?.hostname === 'smartgarden.gloriaundphilipp.de') {
+    if (['smartgarden.gloriaundphilipp.de', 'mach-nass.de'].includes(globalThis.location?.hostname)) {
       return '/api';
     }
 
