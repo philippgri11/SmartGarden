@@ -4,6 +4,7 @@ const REMOTE_UI_HOST = 'smartgarden.gloriaundphilipp.de';
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
   'content-length',
+  'cookie',
   'host',
   'keep-alive',
   'proxy-authenticate',
@@ -28,6 +29,11 @@ export async function onRequest(context) {
   const headers = new Headers(request.headers);
   for (const header of HOP_BY_HOP_HEADERS) {
     headers.delete(header);
+  }
+  for (const header of Array.from(headers.keys())) {
+    if (header.toLowerCase().startsWith('cf-access')) {
+      headers.delete(header);
+    }
   }
 
   if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
