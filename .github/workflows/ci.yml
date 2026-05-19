@@ -101,6 +101,7 @@ jobs:
     name: Deploy remote frontend to Cloudflare
     runs-on: ubuntu-latest
     needs:
+      - backend
       - frontend
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     env:
@@ -134,11 +135,10 @@ jobs:
           };
           EOF
 
-      - name: Deploy static frontend
-        if: env.CLOUDFLARE_API_TOKEN != ''
+      - name: Deploy remote frontend to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: 2a5471c1e77450b4c4e7dcae0ced96df
           workingDirectory: frontend
-          command: deploy --config wrangler.toml
+          command: pages deploy dist/irrigation-control-frontend/browser --project-name smartgarden-remote-ui --branch main

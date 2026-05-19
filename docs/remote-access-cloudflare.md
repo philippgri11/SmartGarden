@@ -35,7 +35,7 @@ Kostenfreie Cloudflare-Bausteine:
 
 - Cloudflare Tunnel
 - Cloudflare Access für eine Self-hosted Application
-- Cloudflare Workers Static Assets für das Remote-Frontend
+- Cloudflare Pages für das Remote-Frontend
 
 Aktueller Cloudflare-Stand am 19.05.2026:
 
@@ -48,6 +48,9 @@ Aktueller Cloudflare-Stand am 19.05.2026:
 - Remote-API Audience: `c08e88defe6a5153fde3daef99bc716ca156140373fb9a063e45650dbc8e5e2d`
 - Cloudflare Tunnel: `smartgarden-pi`
 - Remote-API DNS: `smartgarden-api.gloriaundphilipp.de` als proxied CNAME auf den Tunnel.
+- Remote-Frontend: Cloudflare Pages Projekt `smartgarden-remote-ui`
+- Remote-Frontend DNS: `smartgarden.gloriaundphilipp.de` als proxied CNAME auf `smartgarden-remote-ui.pages.dev`.
+- GitHub Actions Secret `CLOUDFLARE_API_TOKEN` ist fuer den Pages-Deploy gesetzt.
 
 Der Tunnel-Token wurde geprüft, aber nicht ins Repository geschrieben. Er muss als Kubernetes Secret `CLOUDFLARE_TUNNEL_TOKEN` in `irrigation-secret` gesetzt werden, sobald Zugriff auf den Cluster möglich ist.
 
@@ -70,7 +73,7 @@ Falls die Einrichtung per API laufen soll, braucht der verwendete Cloudflare-Tok
 - Cloudflare Access Applications und Policies
 - Cloudflare Tunnel
 - DNS Records für `gloriaundphilipp.de`
-- Workers Scripts/Workers Assets für das Remote-Frontend
+- Cloudflare Pages fuer das Remote-Frontend
 
 Cloudflare Tunnel:
 
@@ -81,9 +84,11 @@ Cloudflare Tunnel:
 
 Remote-Frontend:
 
-1. GitHub Secret `CLOUDFLARE_API_TOKEN` mit Workers/Assets Deploy-Rechten setzen.
-2. Optional GitHub Variable `SMARTGARDEN_REMOTE_API_BASE_URL=https://smartgarden-api.gloriaundphilipp.de/api` setzen.
-3. Auf `main` pusht die CI nach grünem Frontend-Build das statische Remote-Frontend zu Cloudflare.
+1. GitHub Secret `CLOUDFLARE_API_TOKEN` ist mit Pages-Deploy-Rechten gesetzt.
+2. GitHub Variable `SMARTGARDEN_REMOTE_API_BASE_URL=https://smartgarden-api.gloriaundphilipp.de/api` ist gesetzt.
+3. Auf `main` pusht die CI nach gruenen Backend- und Frontend-Tests das statische Remote-Frontend zu Cloudflare Pages.
+4. Feature-Branches werden nicht automatisch zu Cloudflare deployed. Sie koennen bei Bedarf manuell per Workflow/Pages-Deploy veroeffentlicht werden.
+5. `runtime-config.js` wird im CI-Build so geschrieben, dass die Remote-App `https://smartgarden-api.gloriaundphilipp.de/api` nutzt.
 
 ## Betriebshinweis
 
