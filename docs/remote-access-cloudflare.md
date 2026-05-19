@@ -53,6 +53,7 @@ Aktueller Cloudflare-Stand am 19.05.2026:
 - GitHub Actions Secret `CLOUDFLARE_API_TOKEN` ist fuer den Pages-Deploy gesetzt.
 - Remote-Frontend nutzt im Browser denselben Host mit `/api/*`. Eine Cloudflare Pages Function leitet diese Requests serverseitig an `smartgarden-api.gloriaundphilipp.de` weiter.
 - Die Pages Function authentifiziert sich an der API-Access-App mit einem Access Service Token. Dadurch muss der Browser nicht separat gegen `smartgarden-api.gloriaundphilipp.de` eingeloggt werden.
+- Der Tunnel prueft Cloudflare Access am Origin mit `originRequest.access.required=true`. Das Remote-Gate macht danach nur noch fachliche Pfad-/Payload-Filter und erzwingt keine zweite JWT-Pruefung im Pi-Cluster.
 
 Der Tunnel-Token wurde geprüft, aber nicht ins Repository geschrieben. Er muss als Kubernetes Secret `CLOUDFLARE_TUNNEL_TOKEN` in `irrigation-secret` gesetzt werden, sobald Zugriff auf den Cluster möglich ist.
 
