@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   backend:
@@ -61,6 +60,9 @@ jobs:
   images:
     name: Build and publish ARM64 images
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
     needs:
       - backend
       - frontend
