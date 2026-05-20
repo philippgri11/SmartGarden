@@ -386,10 +386,19 @@ class SystemPodStatusResponse(BaseModel):
     memory_mebibytes: float | None = None
 
 
+class SystemDeploymentStatusResponse(BaseModel):
+    name: str
+    desired_replicas: int
+    ready_replicas: int
+    available_replicas: int
+    updated_replicas: int
+
+
 class SystemPodsResponse(BaseModel):
     available: bool
     namespace: str
     message: str | None = None
+    deployments: list[SystemDeploymentStatusResponse] = Field(default_factory=list)
     pods: list[SystemPodStatusResponse]
 
 
