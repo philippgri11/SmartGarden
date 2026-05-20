@@ -13,6 +13,7 @@ fi
 
 kubectl config use-context "$CONTEXT"
 kubectl apply -f "$ROOT_DIR/k8s/namespace.yaml"
+kubectl apply -f "$ROOT_DIR/k8s/rbac.yaml"
 kubectl create secret generic irrigation-secret \
   --namespace irrigation \
   --from-literal=POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}" \

@@ -559,6 +559,50 @@ app-expert-section {
   animation: spin 0.8s linear infinite;
 }
 
+.global-loading-indicator,
+.loading-panel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.global-loading-indicator {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(43, 105, 216, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 34px rgba(20, 34, 25, 0.08);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.global-loading-indicator .spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.loading-panel {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(43, 105, 216, 0.16);
+  background: rgba(43, 105, 216, 0.07);
+}
+
+.loading-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.loading-panel p {
+  margin: 4px 0 0;
+}
+
 .progress-bar {
   height: 6px;
   overflow: hidden;
@@ -1378,6 +1422,17 @@ app-expert-section {
   min-height: 3.2rem;
   display: flex;
   align-items: flex-end;
+}
+
+.compact-section-head {
+  margin-bottom: 14px;
+}
+
+.table-subline {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1200px) {

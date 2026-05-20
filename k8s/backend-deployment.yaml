@@ -17,6 +17,7 @@ spec:
         prometheus.io/path: /metrics
         prometheus.io/port: "8000"
     spec:
+      serviceAccountName: irrigation-api
       containers:
         - name: backend
           image: irrigation-backend:latest

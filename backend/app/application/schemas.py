@@ -371,6 +371,28 @@ class RuntimeSnapshotResponse(BaseModel):
     areas: list[AreaRuntimeResponse]
 
 
+class SystemPodStatusResponse(BaseModel):
+    name: str
+    app: str | None = None
+    phase: str
+    ready: bool
+    ready_containers: int
+    total_containers: int
+    restart_count: int
+    node_name: str | None = None
+    pod_ip: str | None = None
+    started_at: datetime | None = None
+    cpu_millicores: float | None = None
+    memory_mebibytes: float | None = None
+
+
+class SystemPodsResponse(BaseModel):
+    available: bool
+    namespace: str
+    message: str | None = None
+    pods: list[SystemPodStatusResponse]
+
+
 class RunAllAreasResponse(BaseModel):
     message: str
     queued_run_count: int

@@ -13,6 +13,7 @@ import {
   RuntimeSnapshot,
   Schedule,
   SystemSummary,
+  SystemPodsResponse,
   WateringRun,
   WinterModePayload,
   Zone,
@@ -98,6 +99,10 @@ export class ApiService {
 
   getSystemSummary(): Observable<SystemSummary> {
     return this.http.get<SystemSummary>(`${this.baseUrl}/system/summary`);
+  }
+
+  getSystemPods(): Observable<SystemPodsResponse> {
+    return this.http.get<SystemPodsResponse>(`${this.baseUrl}/system/pods`);
   }
 
   getRuntimeSnapshot(): Observable<RuntimeSnapshot> {
