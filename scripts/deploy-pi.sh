@@ -75,6 +75,7 @@ chmod 600 "$secret_env_file"
 } > "$secret_env_file"
 
 apply_manifest "$ROOT_DIR/k8s/namespace.yaml"
+apply_manifest "$ROOT_DIR/k8s/rbac.yaml"
 k create secret generic irrigation-secret \
   --namespace irrigation \
   --from-env-file="$secret_env_file" \

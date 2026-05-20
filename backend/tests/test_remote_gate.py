@@ -29,6 +29,22 @@ def test_remote_gate_allows_read_requests(monkeypatch):
     assert captured["identity"]["email"] == "local-dev"
 
 
+def test_remote_gate_allows_system_pod_status_read(monkeypatch):
+    captured = {}
+
+    async def fake_forward(request, path, body, identity):
+        captured["path"] = path
+        return Response(content=b'{"available": true, "namespace": "irrigation", "pods": []}', media_type="application/json")
+
+    monkeypatch.setattr(remote_gate, "forward_request", fake_forward)
+    with _client(monkeypatch) as client:
+        response = client.get("/api/system/pods")
+
+    assert response.status_code == 200
+    assert response.json()["available"] is True
+    assert captured["path"] == "/api/system/pods"
+
+
 def test_remote_gate_limits_remote_manual_start(monkeypatch):
     monkeypatch.setattr(remote_gate.settings, "remote_gate_max_manual_duration_minutes", 5)
     with _client(monkeypatch) as client:

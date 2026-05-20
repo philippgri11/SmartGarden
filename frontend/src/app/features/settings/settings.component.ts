@@ -1,11 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 
 import { ApiService } from '../../core/api.service';
-import { AppSettings } from '../../core/api.models';
+import { AppSettings, SystemPodsResponse } from '../../core/api.models';
 import { UiPreferencesService } from '../../core/ui-preferences.service';
 import { ExpertSectionComponent } from '../../shared/expert-section.component';
 
@@ -20,6 +20,13 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
     </section>
 
     <section class="panel">
+      <div class="loading-panel" *ngIf="settingsLoading()">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <h3>Einstellungen werden geladen</h3>
+          <p class="muted">Die gespeicherten Werte werden vom Backend gelesen.</p>
+        </div>
+      </div>
       <form [formGroup]="form" class="form-grid form-grid-balanced settings-form-grid" (ngSubmit)="save()">
         <label class="field field-span-4">
           <span>Ort oder Gartenname</span>
@@ -78,12 +85,73 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
         </app-expert-section>
 
         <div class="toolbar field-full">
-          <button class="button" type="submit">Einstellungen speichern</button>
+          <button class="button" type="submit" [disabled]="saving()">
+            {{ saving() ? 'Speichert...' : 'Einstellungen speichern' }}
+          </button>
         </div>
       </form>
       <p class="notice success" *ngIf="feedback()">{{ feedback() }}</p>
       <p class="notice warning" *ngIf="locationError()">{{ locationError() }}</p>
     </section>
+
+    <app-expert-section [enabled]="expertMode()" [open]="true" title="Kubernetes Pods und Ressourcen">
+      <div class="section-head compact-section-head">
+        <div>
+          <h3>Clusterstatus</h3>
+          <p class="muted">Nur lesende Diagnose: Pod-Zustand, Restarts und aktuelle CPU-/Speichernutzung, falls die Metrics-API verfügbar ist.</p>
+        </div>
+        <button class="button secondary" type="button" (click)="loadPods()" [disabled]="podsLoading()">
+          {{ podsLoading() ? 'Aktualisiert...' : 'Aktualisieren' }}
+        </button>
+      </div>
+
+      <div class="loading-panel" *ngIf="podsLoading()">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <h3>Pod-Status wird geladen</h3>
+          <p class="muted">Das Backend fragt die Kubernetes API rein lesend ab.</p>
+        </div>
+      </div>
+
+      <p class="notice warning" *ngIf="pods()?.available === false">{{ pods()?.message }}</p>
+      <p class="notice error" *ngIf="podsError()">{{ podsError() }}</p>
+
+      <div class="scenario-table-wrap" *ngIf="pods() as podState">
+        <p class="muted">Namespace: {{ podState.namespace }}</p>
+        <table class="scenario-table system-pods-table" *ngIf="podState.pods.length; else noPods">
+          <thead>
+            <tr>
+              <th>Pod</th>
+              <th>Status</th>
+              <th>Bereit</th>
+              <th>Restarts</th>
+              <th>CPU</th>
+              <th>Speicher</th>
+              <th>Node</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let pod of podState.pods">
+              <td data-label="Pod">
+                <strong>{{ pod.app || pod.name }}</strong>
+                <span class="muted table-subline">{{ pod.name }}</span>
+              </td>
+              <td data-label="Status">
+                <span class="status-chip" [class.status-paused]="!pod.ready">{{ pod.phase }}</span>
+              </td>
+              <td data-label="Bereit">{{ pod.ready_containers }}/{{ pod.total_containers }}</td>
+              <td data-label="Restarts">{{ pod.restart_count }}</td>
+              <td data-label="CPU">{{ formatCpu(pod.cpu_millicores) }}</td>
+              <td data-label="Speicher">{{ formatMemory(pod.memory_mebibytes) }}</td>
+              <td data-label="Node">{{ pod.node_name || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <ng-template #noPods>
+          <p class="muted">Keine Pods gefunden.</p>
+        </ng-template>
+      </div>
+    </app-expert-section>
 
     <section #winterSection class="panel">
       <div class="section-head">
@@ -154,8 +222,14 @@ export class SettingsComponent {
 
   readonly expertMode = computed(() => this.preferences.expertMode());
   readonly feedback = signal('');
+  readonly settingsLoading = signal(true);
+  readonly saving = signal(false);
   readonly locating = signal(false);
   readonly locationError = signal('');
+  readonly pods = signal<SystemPodsResponse | null>(null);
+  readonly podsLoading = signal(false);
+  readonly podsError = signal('');
+  private podsLoaded = false;
 
   readonly form = this.fb.nonNullable.group({
     location_name: ['Mein Garten', Validators.required],
@@ -179,6 +253,16 @@ export class SettingsComponent {
   constructor() {
     this.api.getSettings().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((settings) => {
       this.patchSettings(settings);
+      this.settingsLoading.set(false);
+    }, () => {
+      this.settingsLoading.set(false);
+      this.locationError.set('Einstellungen konnten nicht geladen werden.');
+    });
+
+    effect(() => {
+      if (this.expertMode() && !this.podsLoaded) {
+        this.loadPods();
+      }
     });
 
     this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -192,6 +276,7 @@ export class SettingsComponent {
 
   save(): void {
     const raw = this.form.getRawValue();
+    this.saving.set(true);
     this.api.updateSettings({
       ...raw,
       postal_code: raw.postal_code || null,
@@ -199,6 +284,10 @@ export class SettingsComponent {
       safety_stop_reason: raw.safety_stop_reason || null,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.feedback.set('Einstellungen gespeichert.');
+      this.saving.set(false);
+    }, () => {
+      this.locationError.set('Einstellungen konnten nicht gespeichert werden.');
+      this.saving.set(false);
     });
   }
 
@@ -237,6 +326,27 @@ export class SettingsComponent {
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 30 * 60 * 1000 }
     );
+  }
+
+  loadPods(): void {
+    this.podsLoading.set(true);
+    this.podsError.set('');
+    this.api.getSystemPods().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((response) => {
+      this.pods.set(response);
+      this.podsLoaded = true;
+      this.podsLoading.set(false);
+    }, () => {
+      this.podsError.set('Pod-Status konnte nicht geladen werden.');
+      this.podsLoading.set(false);
+    });
+  }
+
+  formatCpu(value: number | null | undefined): string {
+    return value === null || value === undefined ? 'keine Metrics' : `${Math.round(value)} mCPU`;
+  }
+
+  formatMemory(value: number | null | undefined): string {
+    return value === null || value === undefined ? 'keine Metrics' : `${value.toFixed(1).replace('.', ',')} MiB`;
   }
 
   private patchSettings(settings: AppSettings): void {

@@ -6,7 +6,7 @@ import { Component, Input } from '@angular/core';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <details class="expert-section" *ngIf="enabled">
+    <details class="expert-section" *ngIf="enabled" [open]="open">
       <summary>{{ title }}</summary>
       <div class="expert-body">
         <ng-content />
@@ -16,5 +16,6 @@ import { Component, Input } from '@angular/core';
 })
 export class ExpertSectionComponent {
   @Input() enabled = false;
+  @Input() open = false;
   @Input() title = 'Expertenmodus';
 }

@@ -182,6 +182,7 @@ def is_remote_read_path(path: str) -> bool:
         "/api/runtime",
         "/api/system/runtime",
         "/api/system/summary",
+        "/api/system/pods",
         "/api/zones",
         "/api/schedules",
         "/api/schedules/projection",
