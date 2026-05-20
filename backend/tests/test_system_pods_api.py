@@ -20,6 +20,15 @@ def test_system_pods_endpoint_returns_pod_status(client: TestClient, monkeypatch
             "available": True,
             "namespace": "irrigation",
             "message": None,
+            "deployments": [
+                {
+                    "name": "backend",
+                    "desired_replicas": 2,
+                    "ready_replicas": 1,
+                    "available_replicas": 1,
+                    "updated_replicas": 1,
+                }
+            ],
             "pods": [
                 {
                     "name": "backend-abc",
@@ -45,5 +54,6 @@ def test_system_pods_endpoint_returns_pod_status(client: TestClient, monkeypatch
     assert response.status_code == 200
     payload = response.json()
     assert payload["available"] is True
+    assert payload["deployments"][0]["desired_replicas"] == 2
     assert payload["pods"][0]["app"] == "backend"
     assert payload["pods"][0]["cpu_millicores"] == 12.4

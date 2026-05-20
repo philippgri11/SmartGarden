@@ -365,10 +365,19 @@ export interface SystemPodStatus {
   memory_mebibytes?: number | null;
 }
 
+export interface SystemDeploymentStatus {
+  name: string;
+  desired_replicas: number;
+  ready_replicas: number;
+  available_replicas: number;
+  updated_replicas: number;
+}
+
 export interface SystemPodsResponse {
   available: boolean;
   namespace: string;
   message?: string | null;
+  deployments: SystemDeploymentStatus[];
   pods: SystemPodStatus[];
 }
 

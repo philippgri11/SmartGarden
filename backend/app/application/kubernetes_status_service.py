@@ -30,14 +30,17 @@ class KubernetesStatusService:
                 "available": False,
                 "namespace": namespace,
                 "message": str(exc),
+                "deployments": [],
                 "pods": [],
             }
 
         metrics = self._pod_metrics(namespace)
+        deployments = self._deployments(namespace)
         return {
             "available": True,
             "namespace": namespace,
             "message": None,
+            "deployments": [self._deployment_status(item) for item in deployments],
             "pods": [self._pod_status(item, metrics.get(item.get("metadata", {}).get("name", ""))) for item in pods_response.get("items", [])],
         }
 
@@ -54,6 +57,13 @@ class KubernetesStatusService:
         except RuntimeError:
             return {}
         return {item.get("metadata", {}).get("name", ""): item for item in response.get("items", [])}
+
+    def _deployments(self, namespace: str) -> list[dict[str, Any]]:
+        try:
+            response = self._request_json(f"/apis/apps/v1/namespaces/{namespace}/deployments")
+        except RuntimeError:
+            return []
+        return response.get("items", [])
 
     def _request_json(self, path: str) -> dict[str, Any]:
         host = os.environ.get("KUBERNETES_SERVICE_HOST")
@@ -103,6 +113,18 @@ class KubernetesStatusService:
             "started_at": status.get("startTime"),
             "cpu_millicores": self._cpu_millicores(metrics),
             "memory_mebibytes": self._memory_mebibytes(metrics),
+        }
+
+    def _deployment_status(self, deployment: dict[str, Any]) -> dict[str, Any]:
+        metadata = deployment.get("metadata", {})
+        spec = deployment.get("spec", {})
+        status = deployment.get("status", {})
+        return {
+            "name": metadata.get("name", ""),
+            "desired_replicas": int(spec.get("replicas") or 0),
+            "ready_replicas": int(status.get("readyReplicas") or 0),
+            "available_replicas": int(status.get("availableReplicas") or 0),
+            "updated_replicas": int(status.get("updatedReplicas") or 0),
         }
 
     def _cpu_millicores(self, metrics: dict[str, Any] | None) -> float | None:
