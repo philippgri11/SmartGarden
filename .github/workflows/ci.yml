@@ -27,9 +27,30 @@ jobs:
         working-directory: backend
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
 
-      - name: Run backend tests
+      - name: Run backend tests with coverage
         timeout-minutes: 5
-        run: pytest backend/tests
+        run: pytest backend/tests --cov=backend/app --cov-report=term-missing --cov-report=xml:backend/coverage.xml --cov-report=html:backend/htmlcov
+
+      - name: Summarize backend coverage
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("backend/coverage.xml").getroot()
+          line_rate = float(root.attrib["line-rate"]) * 100
+          branch_rate = float(root.attrib["branch-rate"]) * 100
+          print("### Backend coverage")
+          print(f"- Lines: {line_rate:.1f}%")
+          print(f"- Branches: {branch_rate:.1f}%")
+          PY
+
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: |
+            backend/coverage.xml
+            backend/htmlcov
 
   frontend:
     name: Frontend build and unit tests
@@ -53,9 +74,29 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Run frontend unit tests
+      - name: Run frontend unit tests with coverage
         working-directory: frontend
-        run: npm run test:unit
+        run: npm run test:coverage
+
+      - name: Summarize frontend coverage
+        working-directory: frontend
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require('node:fs');
+          const summary = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8')).total;
+          console.log('### Frontend coverage');
+          console.log(`- Lines: ${summary.lines.pct}%`);
+          console.log(`- Branches: ${summary.branches.pct}%`);
+          console.log(`- Functions: ${summary.functions.pct}%`);
+          console.log(`- Statements: ${summary.statements.pct}%`);
+          NODE
+
+      - name: Upload frontend coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: |
+            frontend/coverage
 
   images:
     name: Build and publish ARM64 images
