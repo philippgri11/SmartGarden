@@ -33,6 +33,9 @@ class _Candidate:
     schedule_id: int | None = None
     status: str = "planned"
     weather_summary: str | None = None
+    decision_summary: str | None = None
+    decision_details: list[str] | None = None
+    weather_basis: dict | None = None
 
 
 class IrrigationProjectionService:
@@ -54,7 +57,7 @@ class IrrigationProjectionService:
         weather_summary = weather_lookup.summary if weather_lookup else None
         weather_status = weather_lookup.source_status if weather_lookup else "unavailable"
         candidates = self._manual_rule_candidates(now=schedule_now, days=days, app_settings=app_settings)
-        candidates.extend(self._adaptive_rule_candidates(now=schedule_now, days=days, weather_summary=weather_summary))
+        candidates.extend(self._adaptive_rule_candidates(now=schedule_now, days=days, weather_summary=weather_summary, source_status=weather_status))
         items = self._sequence_candidates(candidates)
         return IrrigationProjectionResponse(
             generated_at=generated_at,
@@ -123,11 +126,13 @@ class IrrigationProjectionService:
                             enabled=app_settings.weather_enabled and (schedule.weather_enabled or zone.weather_enabled),
                             source_status=None,
                         ),
+                        decision_summary="Manuelle Regel: Uhrzeit und Dauer sind fest vorgegeben.",
+                        decision_details=[],
                     )
                 )
         return candidates
 
-    def _adaptive_rule_candidates(self, *, now: datetime, days: int, weather_summary) -> list[_Candidate]:
+    def _adaptive_rule_candidates(self, *, now: datetime, days: int, weather_summary, source_status: str) -> list[_Candidate]:
         candidates: list[_Candidate] = []
         weather = ZoneWeatherFacts(
             temperature_max_c=weather_summary.temperature_max_24h_c if weather_summary else None,
@@ -169,7 +174,17 @@ class IrrigationProjectionService:
                         duration_minutes=duration,
                         reason=decision.reason,
                         status=status,
-                        weather_summary=self._weather_text(True, source_status="fresh" if weather_summary else "unavailable"),
+                        weather_summary=self._weather_text(True, source_status=source_status if weather_summary else "unavailable"),
+                        decision_summary=self._adaptive_decision_summary(decision.reason),
+                        decision_details=decision.details,
+                        weather_basis=self._weather_basis(
+                            profile=profile,
+                            plan=plan,
+                            weather=weather,
+                            source_status=source_status if weather_summary else "unavailable",
+                            recommendation=decision.recommendation,
+                            already_watered_today=already_watered_today,
+                        ),
                     )
                 )
                 if decision.should_plan:
@@ -204,6 +219,9 @@ class IrrigationProjectionService:
                     duration_minutes=candidate.duration_minutes,
                     reason=candidate.reason,
                     weather_summary=candidate.weather_summary,
+                    decision_summary=candidate.decision_summary,
+                    decision_details=candidate.decision_details or [],
+                    weather_basis=candidate.weather_basis,
                     adjusted_for_sequence=planned_start != candidate.original_start,
                 )
             )
@@ -273,3 +291,56 @@ class IrrigationProjectionService:
         if source_status == "stale":
             return "Wetterdaten sind älter; die Planung nutzt sie vorsichtig mit dem Zonenprofil."
         return "Wetter und Zonenprofil werden berücksichtigt."
+
+    @staticmethod
+    def _adaptive_decision_summary(reason: str) -> str:
+        if "Wirksamer Regen deckt den Bedarf" in reason:
+            return "Ausgesetzt, weil wirksamer Regen den berechneten Bedarf dieser Zone deckt."
+        if "Regen wird erwartet" in reason:
+            return "Ausgesetzt, weil Regen erwartet wird und der berechnete Netto-Bedarf noch niedrig ist."
+        if "Heute wurde bereits automatisch bewässert" in reason:
+            return "Ausgesetzt, weil heute schon automatisch bewässert wurde und kein zweiter Tageslauf erlaubt ist."
+        if "Mindestabstand" in reason:
+            return "Ausgesetzt, weil der Mindestabstand zum letzten automatischen Lauf noch nicht erreicht ist."
+        if "Kein freigegebenes Bewässerungsfenster" in reason:
+            return "Ausgesetzt, weil gerade kein erlaubtes Zeitfenster aktiv ist."
+        if "übersprungen" in reason:
+            return "Ausgesetzt, weil der berechnete Wasserbedarf unter der Skip-Schwelle liegt."
+        return reason
+
+    @staticmethod
+    def _weather_basis(
+        *,
+        profile: ZoneIrrigationProfile,
+        plan: AdaptiveIrrigationPlan,
+        weather: ZoneWeatherFacts,
+        source_status: str,
+        recommendation,
+        already_watered_today: bool,
+    ) -> dict:
+        return {
+            "source_status": source_status,
+            "temperature_max_24h_c": weather.temperature_max_c,
+            "rain_last_24h_mm": weather.rain_last_24h_mm,
+            "rain_next_24h_mm": weather.rain_next_24h_mm,
+            "cloud_cover_avg_pct": weather.cloud_cover_avg_pct,
+            "base_water_need_mm_per_day": profile.baseWaterNeedMmPerDay,
+            "rain_effectiveness": profile.rainEffectiveness,
+            "risk_profile": profile.riskProfile,
+            "drying_speed": profile.dryingSpeed,
+            "sun_exposure": profile.sunExposure,
+            "preferred_time_windows": plan.preferredTimeWindows,
+            "allow_second_daily_run": plan.allowSecondDailyRun,
+            "already_watered_today": already_watered_today,
+            "min_interval_hours": plan.minIntervalHours,
+            "base_duration_minutes": plan.baseDurationMinutes,
+            "min_duration_minutes": plan.minDurationMinutes,
+            "max_duration_minutes": plan.maxDurationMinutes,
+            "rain_skip_threshold_mm": plan.rainSkipThresholdMm,
+            "rain_delay_threshold_mm": plan.rainDelayThresholdMm,
+            "high_need_threshold_mm": plan.highNeedThresholdMm,
+            "estimated_need_mm": recommendation.estimated_need_mm if recommendation else None,
+            "effective_rain_mm": recommendation.effective_rain_mm if recommendation else None,
+            "net_need_mm": recommendation.net_need_mm if recommendation else None,
+            "duration_multiplier": recommendation.multiplier if recommendation else None,
+        }

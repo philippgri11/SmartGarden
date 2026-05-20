@@ -10,6 +10,7 @@ from app.domain.services import current_schedule_slot, is_schedule_due
 from app.infrastructure.db import orm
 from app.infrastructure.db.orm import Schedule
 from app.infrastructure.db.repositories import WateringRunRepository
+from app.infrastructure.weather.open_meteo_client import WeatherForecastSummary
 from app.infrastructure.gpio.simulated import SimulatedGpioAdapter
 
 from conftest import TEST_SETTINGS
@@ -130,6 +131,8 @@ def test_projection_sequences_manual_before_adaptive(db_session, monkeypatch) ->
     assert first_two[1].adjusted_for_sequence is True
     assert projection.weather_source_status == "unavailable"
     assert "Wetterdaten fehlen" in (first_two[1].weather_summary or "")
+    assert first_two[1].weather_basis is not None
+    assert first_two[1].weather_basis["source_status"] == "unavailable"
 
 
 def test_projection_keeps_fixed_schedule_as_local_wall_time(db_session, monkeypatch) -> None:
@@ -205,6 +208,81 @@ def test_projection_endpoint_returns_backend_plan(client, monkeypatch) -> None:
     response = client.get("/api/schedules/projection?days=7")
     assert response.status_code == 200
     assert response.json()["items"][0]["zone_name"] == "Beet"
+
+
+def test_projection_exposes_adaptive_weather_basis_and_readable_reason(db_session, monkeypatch) -> None:
+    zone = orm.Zone(
+        name="Teich",
+        description="Teich",
+        gpio_chip="/dev/gpiochip0",
+        gpio_line=8,
+        active=True,
+        default_manual_duration_minutes=5,
+        max_duration_minutes=20,
+        weather_enabled=True,
+        scheduling_mode="adaptive",
+        irrigation_profile_json=ZoneIrrigationProfile(
+            zoneType="bed",
+            plantType="mixed",
+            sunExposure="sunny",
+            rainExposure="full",
+            rainEffectiveness=1.0,
+            waterNeedLevel="medium",
+            baseWaterNeedMmPerDay=3.0,
+            temperatureSensitivity=1.0,
+            sunSensitivity=1.0,
+            containerFactor=1.0,
+            dryingSpeed="normal",
+            wateringFrequencyPreference="normal",
+            preferredTimeWindow="early_morning",
+            strategy="balanced",
+            riskProfile="balanced",
+            explanation="Testprofil",
+        ).model_dump(),
+        adaptive_irrigation_plan_json=AdaptiveIrrigationPlan(
+            preferredTimeWindows=["early_morning"],
+            minIntervalHours=6,
+            baseDurationMinutes=7,
+            minDurationMinutes=4,
+            maxDurationMinutes=10,
+            rainSkipThresholdMm=3,
+            rainDelayThresholdMm=1,
+            highNeedThresholdMm=5,
+            rules=["Testregel"],
+            explanation="Testplan",
+        ).model_dump(),
+    )
+    db_session.add(zone)
+    db_session.commit()
+    summary = WeatherForecastSummary(
+        probability_max=50,
+        precipitation_sum_mm=1.5,
+        current_weather_code=None,
+        current_is_day=True,
+        current_temperature_c=24,
+        temperature_max_24h_c=30,
+        precipitation_last_24h_mm=0,
+        precipitation_next_24h_mm=1.5,
+        cloud_cover_avg_pct=20,
+        raw_response={},
+    )
+    monkeypatch.setattr(
+        "app.application.weather_service.WeatherService.try_fetch_current_lookup",
+        lambda *args, **kwargs: ForecastLookup(summary=summary, source_status="fresh", checked_at=None),
+    )
+
+    projection = IrrigationProjectionService(db_session, TEST_SETTINGS).build_projection(
+        days=1,
+        now=datetime(2026, 5, 21, 3, 0, tzinfo=UTC),
+    )
+
+    item = projection.items[0]
+    assert item.weather_basis is not None
+    assert item.weather_basis["temperature_max_24h_c"] == 30
+    assert item.weather_basis["rain_next_24h_mm"] == 1.5
+    assert item.weather_basis["effective_rain_mm"] == 0.75
+    assert item.weather_basis["allow_second_daily_run"] is False
+    assert "Regen erwartet" in item.decision_summary
 
 
 def test_execute_planned_runs_starts_only_one_zone_even_if_config_allows_more(db_session, monkeypatch) -> None:

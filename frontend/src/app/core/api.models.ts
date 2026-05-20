@@ -145,6 +145,9 @@ export interface IrrigationProjectionItem {
   duration_minutes: number;
   reason: string;
   weather_summary?: string | null;
+  decision_summary?: string | null;
+  decision_details: string[];
+  weather_basis?: Record<string, unknown> | null;
   adjusted_for_sequence: boolean;
 }
 

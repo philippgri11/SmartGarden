@@ -229,6 +229,9 @@ class IrrigationProjectionItem(BaseModel):
     duration_minutes: int
     reason: str
     weather_summary: str | None = None
+    decision_summary: str | None = None
+    decision_details: list[str] = Field(default_factory=list)
+    weather_basis: dict | None = None
     adjusted_for_sequence: bool = False
 
 
