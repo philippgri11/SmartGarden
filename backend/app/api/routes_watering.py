@@ -20,6 +20,7 @@ from app.application.watering_service import WateringService
 from app.application.weather_service import WeatherService
 from app.config import Settings
 from app.infrastructure.gpio.factory import build_gpio_adapter
+from app.infrastructure.weather.postal_code_geocoding_client import PostalCodeLookupError
 
 
 router = APIRouter(tags=["watering"])
@@ -167,5 +168,8 @@ def get_settings_endpoint(db: Session = Depends(get_db), app_settings: Settings 
 
 @router.put("/settings", response_model=SettingsResponse)
 def update_settings(payload: SettingsUpdate, db: Session = Depends(get_db), app_settings: Settings = Depends(get_app_settings)) -> SettingsResponse:
-    entity = WeatherService(db, app_settings).update_settings(payload.model_dump())
+    try:
+        entity = WeatherService(db, app_settings).update_settings(payload.model_dump())
+    except PostalCodeLookupError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return SettingsResponse.model_validate(entity, from_attributes=True)

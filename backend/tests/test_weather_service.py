@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from app.application.weather_service import CachedWeatherUnavailableError, WeatherService
 from app.infrastructure.db import orm
 from app.infrastructure.weather.open_meteo_client import WeatherForecastSummary
+from app.infrastructure.weather.postal_code_geocoding_client import PostalCodeCoordinates
 
 from conftest import TEST_SETTINGS
 
@@ -94,6 +95,111 @@ def test_build_live_overview_uses_current_forecast_values(db_session) -> None:
     assert overview["precipitation_probability_max"] == 55
     assert overview["precipitation_sum_mm"] == 0.4
     assert "55 %" in overview["summary_text"]
+
+
+def test_update_settings_resolves_changed_postal_code_when_coordinates_are_unchanged(db_session, monkeypatch) -> None:
+    service = WeatherService(db_session, TEST_SETTINGS)
+    settings = service.get_settings()
+
+    monkeypatch.setattr(
+        service.postal_code_client,
+        "resolve",
+        lambda postal_code: PostalCodeCoordinates(latitude=52.1279, longitude=11.6292, place_name="Magdeburg"),
+    )
+
+    updated = service.update_settings({
+        "location_name": settings.location_name,
+        "postal_code": "39104",
+        "latitude": settings.latitude,
+        "longitude": settings.longitude,
+        "weather_enabled": settings.weather_enabled,
+        "weather_window_hours": settings.weather_window_hours,
+        "weather_probability_threshold": settings.weather_probability_threshold,
+        "weather_precipitation_mm_threshold": settings.weather_precipitation_mm_threshold,
+        "weather_fail_mode": settings.weather_fail_mode,
+        "winter_mode_active": settings.winter_mode_active,
+        "winter_disable_manual_start": settings.winter_disable_manual_start,
+        "winter_pause_schedules": settings.winter_pause_schedules,
+        "safety_shutdown_on_winter": settings.safety_shutdown_on_winter,
+        "system_paused_until": settings.system_paused_until,
+        "safety_stop_active": settings.safety_stop_active,
+        "safety_stop_reason": settings.safety_stop_reason,
+    })
+
+    assert updated.postal_code == "39104"
+    assert updated.latitude == 52.1279
+    assert updated.longitude == 11.6292
+
+
+def test_update_settings_keeps_manual_coordinates_when_postal_code_changes(db_session, monkeypatch) -> None:
+    service = WeatherService(db_session, TEST_SETTINGS)
+    settings = service.get_settings()
+    calls = 0
+
+    def resolve(postal_code: str) -> PostalCodeCoordinates:
+        nonlocal calls
+        calls += 1
+        return PostalCodeCoordinates(latitude=52.1279, longitude=11.6292)
+
+    monkeypatch.setattr(service.postal_code_client, "resolve", resolve)
+
+    updated = service.update_settings({
+        "location_name": settings.location_name,
+        "postal_code": "39104",
+        "latitude": 51.23,
+        "longitude": 12.34,
+        "weather_enabled": settings.weather_enabled,
+        "weather_window_hours": settings.weather_window_hours,
+        "weather_probability_threshold": settings.weather_probability_threshold,
+        "weather_precipitation_mm_threshold": settings.weather_precipitation_mm_threshold,
+        "weather_fail_mode": settings.weather_fail_mode,
+        "winter_mode_active": settings.winter_mode_active,
+        "winter_disable_manual_start": settings.winter_disable_manual_start,
+        "winter_pause_schedules": settings.winter_pause_schedules,
+        "safety_shutdown_on_winter": settings.safety_shutdown_on_winter,
+        "system_paused_until": settings.system_paused_until,
+        "safety_stop_active": settings.safety_stop_active,
+        "safety_stop_reason": settings.safety_stop_reason,
+    })
+
+    assert calls == 0
+    assert updated.latitude == 51.23
+    assert updated.longitude == 12.34
+
+
+def test_update_settings_resolves_existing_postal_code_when_coordinates_are_still_defaults(db_session, monkeypatch) -> None:
+    service = WeatherService(db_session, TEST_SETTINGS)
+    settings = service.get_settings()
+    settings.postal_code = "39104"
+    db_session.commit()
+
+    monkeypatch.setattr(
+        service.postal_code_client,
+        "resolve",
+        lambda postal_code: PostalCodeCoordinates(latitude=52.1279, longitude=11.6292),
+    )
+
+    updated = service.update_settings({
+        "location_name": settings.location_name,
+        "postal_code": "39104",
+        "latitude": settings.latitude,
+        "longitude": settings.longitude,
+        "weather_enabled": settings.weather_enabled,
+        "weather_window_hours": settings.weather_window_hours,
+        "weather_probability_threshold": settings.weather_probability_threshold,
+        "weather_precipitation_mm_threshold": settings.weather_precipitation_mm_threshold,
+        "weather_fail_mode": settings.weather_fail_mode,
+        "winter_mode_active": settings.winter_mode_active,
+        "winter_disable_manual_start": settings.winter_disable_manual_start,
+        "winter_pause_schedules": settings.winter_pause_schedules,
+        "safety_shutdown_on_winter": settings.safety_shutdown_on_winter,
+        "system_paused_until": settings.system_paused_until,
+        "safety_stop_active": settings.safety_stop_active,
+        "safety_stop_reason": settings.safety_stop_reason,
+    })
+
+    assert updated.latitude == 52.1279
+    assert updated.longitude == 11.6292
 
 
 def test_forecast_cache_reuses_fresh_response(db_session, monkeypatch) -> None:

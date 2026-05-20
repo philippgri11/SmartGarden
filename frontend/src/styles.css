@@ -387,6 +387,43 @@ app-expert-section {
   gap: 8px;
 }
 
+.location-map {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(246, 250, 243, 0.72);
+}
+
+.location-map-copy {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.location-map-copy h3 {
+  margin: 0 0 6px;
+}
+
+.location-map-copy p {
+  margin: 0;
+}
+
+.location-coordinates {
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+.location-map iframe {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
 .info-dot {
   display: inline-grid;
   place-items: center;

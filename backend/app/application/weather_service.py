@@ -11,6 +11,7 @@ from app.domain.policies import WeatherPolicyInput, WeatherPolicyResult, evaluat
 from app.infrastructure.db.orm import AppSetting, Schedule, WeatherDecision, WeatherForecastCache, Zone
 from app.infrastructure.db.repositories import AppSettingRepository
 from app.infrastructure.weather.open_meteo_client import OpenMeteoClient, WeatherForecastSummary
+from app.infrastructure.weather.postal_code_geocoding_client import PostalCodeGeocodingClient, PostalCodeLookupError
 
 
 class CachedWeatherUnavailableError(RuntimeError):
@@ -33,6 +34,10 @@ class WeatherService:
         self.settings = settings
         self.repo = AppSettingRepository(session)
         self.client = OpenMeteoClient(settings.weather_api_base_url)
+        self.postal_code_client = PostalCodeGeocodingClient(
+            settings.postal_code_geocoding_base_url,
+            country_code=settings.postal_code_country_code,
+        )
 
     def get_settings(self) -> AppSetting:
         current = self.repo.get()
@@ -64,11 +69,50 @@ class WeatherService:
 
     def update_settings(self, payload: dict) -> AppSetting:
         current = self.get_settings()
+        payload = dict(payload)
+        self._apply_postal_code_coordinates(current, payload)
         for key, value in payload.items():
             setattr(current, key, value)
         self.session.commit()
         self.session.refresh(current)
         return current
+
+    def _apply_postal_code_coordinates(self, current: AppSetting, payload: dict) -> None:
+        postal_code = self._normalize_postal_code(payload.get("postal_code"))
+        if not postal_code:
+            payload["postal_code"] = None
+            return
+
+        payload["postal_code"] = postal_code
+        coordinates_changed = self._coordinate_changed(payload.get("latitude"), current.latitude) or self._coordinate_changed(
+            payload.get("longitude"),
+            current.longitude,
+        )
+        postal_code_changed = postal_code != self._normalize_postal_code(current.postal_code)
+        coordinates_are_still_defaults = (
+            not self._coordinate_changed(current.latitude, self.settings.default_latitude)
+            and not self._coordinate_changed(current.longitude, self.settings.default_longitude)
+        )
+        if coordinates_changed or (not postal_code_changed and not coordinates_are_still_defaults):
+            return
+
+        coordinates = self.postal_code_client.resolve(postal_code)
+        payload["latitude"] = coordinates.latitude
+        payload["longitude"] = coordinates.longitude
+
+    @staticmethod
+    def _normalize_postal_code(value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @staticmethod
+    def _coordinate_changed(new_value: object, current_value: float) -> bool:
+        try:
+            return abs(float(new_value) - float(current_value)) > 0.00001
+        except (TypeError, ValueError):
+            return False
 
     def evaluate(self, *, zone: Zone, schedule: Schedule | None) -> tuple[WeatherPolicyResult, WeatherForecastSummary | None, AppSetting]:
         app_settings = self.get_settings()

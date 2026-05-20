@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     weather_default_precipitation_mm_threshold: float = 2.0
     weather_cache_ttl_minutes: int = 30
     weather_cache_stale_fallback_hours: int = 24
+    postal_code_geocoding_base_url: str = "https://api.zippopotam.us"
+    postal_code_country_code: str = "de"
 
     irrigation_model_neutral_temperature_c: float = 22.0
     irrigation_model_heat_pressure_span_c: float = Field(default=14.0, gt=0.0)

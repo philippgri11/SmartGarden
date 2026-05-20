@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, ElementRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 
 import { ApiService } from '../../core/api.service';
@@ -35,7 +36,7 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
         <label class="field field-span-2">
           <span>PLZ</span>
           <input formControlName="postal_code" placeholder="z. B. 10115" />
-          <small class="muted">Optional für deine Orientierung. Die Wetterdaten nutzen die Koordinaten.</small>
+          <small class="muted">Beim Speichern wird die PLZ in Koordinaten umgerechnet, solange du keine Koordinaten manuell änderst.</small>
         </label>
         <div class="field field-span-2">
           <span>Standort</span>
@@ -83,6 +84,28 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
             </label>
           </div>
         </app-expert-section>
+
+        <section class="location-map field-full" aria-label="Standortprüfung">
+          <div class="location-map-copy">
+            <div>
+              <h3>Standortprüfung</h3>
+              <p class="muted">
+                Wetter und Planung nutzen diese Koordinaten. Nach dem Speichern zeigt die Karte den wirklich gespeicherten Standort.
+              </p>
+              <p class="muted location-coordinates" *ngIf="coordinateLabel()">{{ coordinateLabel() }}</p>
+            </div>
+            <a class="button button-subtle" *ngIf="googleMapsLink()" [href]="googleMapsLink()" target="_blank" rel="noopener">
+              In Google Maps öffnen
+            </a>
+          </div>
+          <iframe
+            *ngIf="googleMapsEmbedUrl() as mapUrl"
+            title="Standort in Google Maps"
+            [src]="mapUrl"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+        </section>
 
         <div class="toolbar field-full">
           <button class="button" type="submit" [disabled]="saving()">
@@ -262,6 +285,7 @@ export class SettingsComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly preferences = inject(UiPreferencesService);
   private readonly route = inject(ActivatedRoute);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly expertMode = computed(() => this.preferences.expertMode());
   readonly feedback = signal('');
@@ -269,6 +293,9 @@ export class SettingsComponent {
   readonly saving = signal(false);
   readonly locating = signal(false);
   readonly locationError = signal('');
+  readonly googleMapsLink = signal('');
+  readonly googleMapsEmbedUrl = signal<SafeResourceUrl | null>(null);
+  readonly coordinateLabel = signal('');
   readonly pods = signal<SystemPodsResponse | null>(null);
   readonly podsLoading = signal(false);
   readonly podsError = signal('');
@@ -306,10 +333,15 @@ export class SettingsComponent {
   constructor() {
     this.api.getSettings().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((settings) => {
       this.patchSettings(settings);
+      this.updateMapPreview();
       this.settingsLoading.set(false);
     }, () => {
       this.settingsLoading.set(false);
       this.locationError.set('Einstellungen konnten nicht geladen werden.');
+    });
+
+    this.form.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.updateMapPreview();
     });
 
     effect(() => {
@@ -329,17 +361,25 @@ export class SettingsComponent {
 
   save(): void {
     const raw = this.form.getRawValue();
+    this.feedback.set('');
+    this.locationError.set('');
     this.saving.set(true);
     this.api.updateSettings({
       ...raw,
       postal_code: raw.postal_code || null,
       system_paused_until: raw.system_paused_until || null,
       safety_stop_reason: raw.safety_stop_reason || null,
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.feedback.set('Einstellungen gespeichert.');
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((settings) => {
+      this.patchSettings(settings);
+      this.updateMapPreview();
+      const coordinatesChangedByBackend = this.coordinatesDiffer(raw.latitude, settings.latitude) || this.coordinatesDiffer(raw.longitude, settings.longitude);
+      this.feedback.set(coordinatesChangedByBackend
+        ? 'Einstellungen gespeichert. Die Koordinaten wurden aus der PLZ übernommen.'
+        : 'Einstellungen gespeichert.');
+      this.locationError.set('');
       this.saving.set(false);
     }, () => {
-      this.locationError.set('Einstellungen konnten nicht gespeichert werden.');
+      this.locationError.set('Einstellungen konnten nicht gespeichert werden. Prüfe PLZ oder Koordinaten.');
       this.saving.set(false);
     });
   }
@@ -370,6 +410,7 @@ export class SettingsComponent {
           latitude: Number(position.coords.latitude.toFixed(5)),
           longitude: Number(position.coords.longitude.toFixed(5)),
         });
+        this.updateMapPreview();
         this.feedback.set('GPS-Koordinaten übernommen. Speichere die Einstellungen, damit die Wettersteuerung sie nutzt.');
         this.locating.set(false);
       },
@@ -409,5 +450,27 @@ export class SettingsComponent {
       system_paused_until: settings.system_paused_until ?? '',
       safety_stop_reason: settings.safety_stop_reason ?? '',
     });
+  }
+
+  private updateMapPreview(): void {
+    const latitude = Number(this.form.controls.latitude.value);
+    const longitude = Number(this.form.controls.longitude.value);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      this.googleMapsLink.set('');
+      this.googleMapsEmbedUrl.set(null);
+      this.coordinateLabel.set('');
+      return;
+    }
+
+    const coordinates = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    this.coordinateLabel.set(`Aktuell: ${coordinates}`);
+    this.googleMapsLink.set(`https://www.google.com/maps?q=${encodeURIComponent(coordinates)}`);
+    this.googleMapsEmbedUrl.set(this.sanitizer.bypassSecurityTrustResourceUrl(
+      `https://www.google.com/maps?q=${encodeURIComponent(coordinates)}&z=15&output=embed`,
+    ));
+  }
+
+  private coordinatesDiffer(left: number, right: number): boolean {
+    return Math.abs(Number(left) - Number(right)) > 0.00001;
   }
 }
