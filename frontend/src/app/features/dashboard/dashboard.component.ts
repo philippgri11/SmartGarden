@@ -67,6 +67,14 @@ export function isGermanFathersDay(date: Date = new Date()): boolean {
     </section>
 
     <ng-container *ngIf="vm$ | async as vm">
+      <section class="panel loading-panel" *ngIf="!vm.ready">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <h3>Dashboard wird geladen</h3>
+          <p class="muted">Status, Wetter und Bereiche werden gerade abgefragt.</p>
+        </div>
+      </section>
+      <p class="notice error" *ngIf="vm.error">{{ vm.error }}</p>
       <app-winter-mode-banner [active]="vm.settings.winter_mode_active" (disable)="setWinterMode(false)" />
       <app-system-status-card *ngIf="vm.summary" [summary]="vm.summary" [expertMode]="expertMode()" />
 

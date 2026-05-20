@@ -350,6 +350,28 @@ export interface RuntimeSnapshot {
   areas: Zone[];
 }
 
+export interface SystemPodStatus {
+  name: string;
+  app?: string | null;
+  phase: string;
+  ready: boolean;
+  ready_containers: number;
+  total_containers: number;
+  restart_count: number;
+  node_name?: string | null;
+  pod_ip?: string | null;
+  started_at?: string | null;
+  cpu_millicores?: number | null;
+  memory_mebibytes?: number | null;
+}
+
+export interface SystemPodsResponse {
+  available: boolean;
+  namespace: string;
+  message?: string | null;
+  pods: SystemPodStatus[];
+}
+
 export interface RunAllAreasResponse {
   message: string;
   queued_run_count: number;

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: irrigation-api
+  namespace: irrigation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: irrigation-api-read
+  namespace: irrigation
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: irrigation-api-read
+  namespace: irrigation
+subjects:
+  - kind: ServiceAccount
+    name: irrigation-api
+    namespace: irrigation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: irrigation-api-read

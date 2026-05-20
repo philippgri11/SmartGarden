@@ -8,6 +8,7 @@ from app.api.routes_maps import router as maps_router
 from app.api.routes_metrics import router as metrics_router
 from app.api.routes_runtime import router as runtime_router
 from app.api.routes_schedules import router as schedules_router
+from app.api.routes_system import router as system_router
 from app.api.routes_watering import router as watering_router
 from app.api.routes_zones import router as zones_router
 from app.config import get_settings
@@ -38,3 +39,4 @@ app.include_router(schedules_router, prefix=settings.api_prefix)
 app.include_router(watering_router, prefix=settings.api_prefix)
 app.include_router(maps_router, prefix=settings.api_prefix)
 app.include_router(runtime_router, prefix=settings.api_prefix)
+app.include_router(system_router, prefix=settings.api_prefix)

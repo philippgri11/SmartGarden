@@ -3,6 +3,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { UiPreferencesService } from './core/ui-preferences.service';
+import { LoadingService } from './core/loading.service';
 import { EmergencyStopButtonComponent } from './shared/emergency-stop-button.component';
 import { RuntimeFacade } from './state/runtime/runtime.facade';
 
@@ -53,6 +54,10 @@ import { RuntimeFacade } from './state/runtime/runtime.facade';
       </nav>
 
       <main class="content-shell">
+        <div class="global-loading-indicator" *ngIf="loading.visible()" aria-live="polite">
+          <div class="spinner" aria-hidden="true"></div>
+          <span>Daten werden geladen...</span>
+        </div>
         <router-outlet />
       </main>
     </div>
@@ -60,6 +65,7 @@ import { RuntimeFacade } from './state/runtime/runtime.facade';
 })
 export class AppComponent implements OnInit {
   readonly preferences = inject(UiPreferencesService);
+  readonly loading = inject(LoadingService);
   private readonly runtime = inject(RuntimeFacade);
 
   readonly expertMode = computed(() => this.preferences.expertMode());
