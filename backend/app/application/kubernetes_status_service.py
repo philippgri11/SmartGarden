@@ -30,6 +30,7 @@ class KubernetesStatusService:
                 "available": False,
                 "namespace": namespace,
                 "message": str(exc),
+                "deployments": [],
                 "pods": [],
             }
 
