@@ -154,6 +154,7 @@ class IrrigationProjectionService:
                     last_run_at=simulated_last_run,
                     max_duration_minutes=zone.max_duration_minutes,
                     already_watered_today=already_watered_today,
+                    model_config=self.settings.zone_irrigation_model_config(),
                 )
                 if not decision.scheduled_at:
                     continue

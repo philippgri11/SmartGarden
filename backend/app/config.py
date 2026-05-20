@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     weather_cache_ttl_minutes: int = 30
     weather_cache_stale_fallback_hours: int = 24
 
+    irrigation_model_neutral_temperature_c: float = 22.0
+    irrigation_model_heat_pressure_span_c: float = Field(default=14.0, gt=0.0)
+    irrigation_model_temperature_influence: float = Field(default=0.35, ge=0.0)
+    irrigation_model_sun_influence: float = Field(default=0.4, ge=0.0)
+    irrigation_model_forecast_rain_weight: float = Field(default=0.5, ge=0.0, le=1.0)
+    irrigation_model_min_duration_multiplier: float = Field(default=0.35, ge=0.0)
+    irrigation_model_max_duration_multiplier: float = Field(default=1.6, ge=0.0)
+    irrigation_model_skip_net_need_threshold_mm: float = Field(default=0.6, ge=0.0)
+
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4.1-mini"
     openai_transcription_model: str = "whisper-1"
@@ -89,6 +98,26 @@ class Settings(BaseSettings):
         return (
             f"postgresql+psycopg://{self.database_user}:{self.database_password}"
             f"@{self.database_host}:{self.database_port}/{self.database_name}"
+        )
+
+    def zone_irrigation_model_config(self):
+        from app.domain.zone_irrigation import ZoneIrrigationModelConfig
+
+        return ZoneIrrigationModelConfig(
+            neutral_temperature_c=self.irrigation_model_neutral_temperature_c,
+            heat_pressure_span_c=self.irrigation_model_heat_pressure_span_c,
+            temperature_influence=self.irrigation_model_temperature_influence,
+            sun_influence=self.irrigation_model_sun_influence,
+            forecast_rain_weight=self.irrigation_model_forecast_rain_weight,
+            min_duration_multiplier=min(
+                self.irrigation_model_min_duration_multiplier,
+                self.irrigation_model_max_duration_multiplier,
+            ),
+            max_duration_multiplier=max(
+                self.irrigation_model_min_duration_multiplier,
+                self.irrigation_model_max_duration_multiplier,
+            ),
+            skip_net_need_threshold_mm=self.irrigation_model_skip_net_need_threshold_mm,
         )
 
 

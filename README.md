@@ -1,21 +1,50 @@
-# Irrigation Control for Raspberry Pi and k3s
+# SmartGarden
 
-Eine wartbar strukturierte Bewässerungssteuerung mit FastAPI, Angular, PostgreSQL, Docker und Kubernetes/k3s. Das Projekt ist so aufgebaut, dass du lokal auf dem Mac mit Simulation entwickeln kannst und später dieselben Container- und Kubernetes-Prinzipien auf einem Raspberry Pi mit k3s weiterverwendest.
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=YOUR_BUTTON_ID)
+
+SmartGarden ist eine offene Bewaesserungssteuerung fuer DIY-Home-Projekte: Raspberry Pi, Relais, Ventile, Wetterdaten, Web-Dashboard und eine interaktive Gartenkarte in einem sauber strukturierten Stack.
+
+Das Projekt ist fuer Menschen gedacht, die ihre Terrasse, Hochbeete, Balkonpflanzen oder den ganzen Garten selbst automatisieren wollen, ohne sich in einer geschlossenen Smart-Home-Cloud einzusperren. Lokal laeuft alles in Simulation, auf dem Raspberry Pi kann dieselbe Architektur spaeter echte GPIO-Hardware steuern.
+
+## Highlights
+
+- Web-Dashboard fuer Zonen, Zeitplaene, Historie, Einstellungen und Not-Aus
+- Interaktive Gartenkarte mit Bild-Overlay und gezeichneten Bewaesserungsflaechen
+- Wetterbasierte Entscheidungen ueber Open-Meteo, ohne API-Key
+- Lokale Simulation auf dem Mac oder PC, bevor echte Ventile angeschlossen werden
+- Raspberry-Pi-Deployment mit k3s, ARM64-Images und vorbereitetem GPIO-Zugriff
+- PostgreSQL-Persistenz fuer Zonen, Laeufe, Wetterentscheidungen und Systemstatus
+- Klare Trennung zwischen API, Scheduler, Frontend, Datenbank und Hardwareadapter
+- Sicherheitslogik mit Maximaldauer, Stop-All-Endpunkt und kontrolliertem Scheduler
+
+## Warum fuer DIY-Home-Projekte?
+
+SmartGarden ist kein reines Demo-Projekt. Es ist als Bastelbasis fuer echte Heimautomatisierung gedacht:
+
+- Starte klein mit einer Zone und simuliertem GPIO.
+- Zeichne deinen Garten, Balkon oder dein Hochbeet als Karte nach.
+- Erweitere spaeter um Relaisboards, Magnetventile, Pumpen oder Sensorik.
+- Behalte die Kontrolle lokal im Heimnetz.
+- Passe die Logik an deine Pflanzen, dein Wetter und deine Hardware an.
+
+Typische Ideen:
+
+- automatische Hochbeet-Bewaesserung
+- Balkonpflanzen mit Zeitplan und Regencheck
+- Gewaechshaussteuerung auf Raspberry Pi
+- Pumpensteuerung fuer Regentonne oder Zisterne
+- kleines Smart-Home-Labor fuer FastAPI, Angular, Docker und Kubernetes
 
 ## Architektur
 
-Die Architektur trennt API, Scheduler und Hardwarezugriff bewusst:
+Die Architektur trennt bewusst die Teile, die in einem Heimprojekt oft durcheinander geraten:
 
-- `backend`: FastAPI-API für Zonen, Zeitpläne, Historie, Einstellungen und Not-Aus.
-- `scheduler`: eigenständiger Worker-Prozess, der fällige Jobs plant, Weather-Checks ausführt und allein GPIO-seitig schreibt.
-- `frontend`: Angular-Standalone-App für Dashboard, Zonen, Zeitpläne, Historie, Konfiguration und interaktive Gartenkarte.
-- `postgres`: zentrale Persistenz für Zonen, Zeitpläne, Läufe, Wetterentscheidungen und globale Einstellungen.
+- `backend`: FastAPI-API fuer Zonen, Zeitplaene, Historie, Einstellungen, Karten und Not-Aus
+- `scheduler`: eigenstaendiger Worker, der faellige Jobs plant, Wetter prueft und GPIO schreibt
+- `frontend`: Angular-App fuer Dashboard, Zonen, Zeitplaene, Historie, Settings und Gartenkarte
+- `postgres`: zentrale Datenbank fuer Konfiguration, Laeufe und Entscheidungen
 
-Wichtig: Das API-Backend ist horizontal skalierbar. Scheduler und GPIO-Schreibzugriff laufen nur einmal. Zusätzlich schützt ein PostgreSQL-Advisory-Lock vor doppelter Job-Ausführung.
-
-## Mermaid
-
-### System Context
+Wichtig: Das API-Backend kann horizontal laufen. Scheduler und GPIO-Schreibzugriff laufen nur einmal. Ein PostgreSQL-Advisory-Lock schuetzt zusaetzlich vor doppelter Job-Ausfuehrung.
 
 ```mermaid
 flowchart LR
@@ -30,14 +59,12 @@ flowchart LR
     GPIO --> Valves["Ventile / Relais / Pumpen"]
 ```
 
-### Container Overview
-
 ```mermaid
 flowchart TB
     subgraph Cluster["Docker Compose oder k3s/k3d"]
       Frontend["frontend deployment"]
-      Backend["backend deployment (N replicas)"]
-      Scheduler["scheduler deployment (1 replica)"]
+      Backend["backend deployment"]
+      Scheduler["scheduler deployment, 1 replica"]
       Postgres["postgres statefulset"]
     end
     Frontend --> Backend
@@ -47,127 +74,24 @@ flowchart TB
     Scheduler --> Gpio["SimulatedGpioAdapter / RealGpioAdapter"]
 ```
 
-### Scheduling Flow
-
-```mermaid
-flowchart TD
-    Tick["Scheduler Tick"] --> Lock{"Advisory Lock erhalten?"}
-    Lock -- Nein --> Wait["Warten bis nächster Tick"]
-    Lock -- Ja --> Due["Fällige Schedule Slots berechnen"]
-    Due --> Planned["Geplante watering_runs anlegen"]
-    Planned --> Weather{"Wetterprüfung aktiv?"}
-    Weather -- Ja --> Decide["Open-Meteo auswerten"]
-    Weather -- Nein --> Start["Zone aktivieren"]
-    Decide -->|allow| Start
-    Decide -->|skip/error| History["Als skipped/failed protokollieren"]
-    Start --> Running["Run läuft"]
-    Running --> Finish["Bei Stop/Timeout deaktivieren"]
-```
-
-### Weather Decision Flow
-
-```mermaid
-flowchart LR
-    Request["Run soll starten"] --> Enabled{"Weather aktiv?"}
-    Enabled -- Nein --> Allow["allow"]
-    Enabled -- Ja --> Fetch["Forecast laden"]
-    Fetch --> Error{"API Fehler?"}
-    Error -- Ja + allow --> Allow
-    Error -- Ja + deny --> Block["error / block"]
-    Error -- Nein --> Compare["Thresholds vergleichen"]
-    Compare -->|Regen erwartet| Skip["skip"]
-    Compare -->|unter Threshold| Allow
-```
-
-### Deployment Mac vs Raspberry Pi
-
-```mermaid
-flowchart TB
-    Mac["Mac Entwicklung"] --> Compose["docker compose up --build"]
-    Mac --> K3d["k3d / lokales k3s-nahes Testen"]
-    Compose --> Sim["GPIO_MODE=simulated"]
-    K3d --> Sim
-    Mac --> Build["build-arm64.sh"]
-    Build --> Sync["sync-to-pi.sh"]
-    Sync --> Pi["Raspberry Pi + k3s"]
-    Pi --> Real["GPIO_MODE=real + /dev/gpiochip0 hostPath"]
-```
-
 ## Repository-Struktur
 
 ```text
-backend/
-frontend/
-k8s/
-scripts/
+backend/          FastAPI, Domain-Logik, Services, GPIO-Adapter, Alembic
+frontend/         Angular-App mit Dashboard und Gartenkarte
+k8s/              Kubernetes- und k3s-Manifeste
+scripts/          Build-, Sync-, Deployment- und E2E-Helfer
 docker-compose.yml
 README.md
+LICENSE
 ```
 
-## Backend
-
-- FastAPI mit OpenAPI, `/health/live` und `/health/ready`
-- SQLAlchemy + Alembic
-- Hexagonal angelegt über `application`, `domain` und `infrastructure`
-- `SimulatedGpioAdapter` für Mac und `RealGpioAdapter` als vorbereiteter Platzhalter für `libgpiod`
-- Safety-Regeln:
-  - Maximaldauer pro Zone wird erzwungen
-  - Scheduler setzt beim Start alle Zonen auf OFF
-  - Bei Scheduler-Fehlern werden alle aktiven Zonen gestoppt
-  - Not-Aus API: `POST /api/watering/stop-all`
-
-## Frontend
-
-- Angular Standalone Components
-- Bereiche:
-  - Dashboard
-  - Zonen
-  - Zeitpläne
-  - Historie
-  - Konfiguration
-  - Gartenkarte mit Leaflet Simple CRS, Bild-Overlay und Polygon-Zeichnen
-
-### Interaktive Gartenkarte
-
-Die Gartenkarte ist für lokale Bildkoordinaten ausgelegt und braucht keine echten GPS-Koordinaten. Im Frontend wird Leaflet mit `CRS.Simple` verwendet, damit du ein Gartenbild als statischen Hintergrund laden und darauf Zonen als Polygone einzeichnen kannst.
-
-Vorhandene Funktionen:
-
-- Gartenkarte anlegen, bearbeiten und löschen
-- Gartenbild per `image_url` als Hintergrund laden
-- Polygone für Zonen zeichnen, bearbeiten und löschen
-- Zuordnung eines Polygons zu genau einer Zone
-- Farbcodierte Zustände direkt auf der Karte:
-  - grau = deaktiviert
-  - grün = aktiv
-  - blau = läuft gerade
-  - orange = in den nächsten 12 Stunden geplant
-  - rot = letzter Lauf fehlgeschlagen
-- Klick auf eine Fläche zeigt:
-  - Zonenname
-  - Status
-  - nächste Bewässerung
-  - letzte Bewässerung
-  - Wetterabhängigkeit
-  - Aktionen für Start, Stop und Wechsel zur Zeitplanverwaltung
-
-API-Endpunkte für die Kartenfunktion:
-
-- `GET /api/maps`
-- `POST /api/maps`
-- `PUT /api/maps/{map_id}`
-- `DELETE /api/maps/{map_id}`
-- `GET /api/maps/{map_id}/view`
-- `POST /api/maps/shapes`
-- `PUT /api/maps/shapes/{shape_id}`
-- `DELETE /api/maps/shapes/{shape_id}`
-
-## Lokale Entwicklung auf dem Mac
+## Quickstart lokal
 
 ### Voraussetzungen
 
-- Docker Desktop
-- optional: `kubectl`, `k3d`
+- Docker Desktop oder kompatible Docker-Umgebung
+- optional: `kubectl` und `k3d`
 
 ### Start mit Docker Compose
 
@@ -183,25 +107,37 @@ Danach:
 - OpenAPI: `http://localhost:8000/docs`
 - Postgres: `localhost:5432`
 
-Die Gartenkarte erreichst du im Frontend über den Menüpunkt `Gartenkarte`. Für einen schnellen Start kannst du zuerst eine Karte mit Bild-URL und Größe anlegen und danach Polygone für bestehende Zonen einzeichnen.
+Lokal nutzt SmartGarden standardmaessig `GPIO_MODE=simulated`. GPIO-Aktionen werden geloggt, echte Pins werden nicht geschaltet.
 
-### Simulation
+## Gartenkarte
 
-Auf dem Mac läuft die Anwendung mit `GPIO_MODE=simulated`. GPIO-Aktionen werden geloggt und die resultierenden Läufe sind in `watering_runs` und `weather_decisions` nachvollziehbar.
+Die Gartenkarte nutzt Leaflet mit `CRS.Simple`. Du brauchst keine GPS-Koordinaten, sondern kannst ein eigenes Gartenbild, einen Grundriss oder eine Skizze als Hintergrund verwenden und darauf Flaechen einzeichnen.
 
-## Lokales Kubernetes mit k3d
+Vorhandene Funktionen:
 
-Das Projekt ist so angelegt, dass die gleiche Trennung wie auf dem Pi gilt: API mehrfach, Scheduler einmal, Postgres persistent.
+- Gartenkarte anlegen, bearbeiten und loeschen
+- Gartenbild per `image_url` als Hintergrund laden
+- Polygone fuer Zonen zeichnen, bearbeiten und loeschen
+- genau eine Zone pro Polygon zuordnen
+- farbcodierte Zustaende direkt auf der Karte
+- Klick auf eine Flaeche mit Status, naechster Bewaesserung, letzter Bewaesserung und Aktionen
 
-```bash
-./scripts/deploy-local-k3d.sh
-```
+API-Endpunkte:
 
-Hinweis: Für ein echtes lokales k3d-Deployment müssen die Docker-Images im Cluster verfügbar sein. Das ist derselbe image-basierte Weg, den du später auch auf dem Pi brauchst. Der lokale Scheduler nutzt bewusst `GPIO_MODE=simulated` ohne Device-Mount. Auf dem Pi kommt stattdessen das Pi-spezifische Scheduler-Manifest mit `/dev/gpiochip0` dazu.
+- `GET /api/maps`
+- `POST /api/maps`
+- `PUT /api/maps/{map_id}`
+- `DELETE /api/maps/{map_id}`
+- `GET /api/maps/{map_id}/view`
+- `POST /api/maps/shapes`
+- `PUT /api/maps/shapes/{shape_id}`
+- `DELETE /api/maps/shapes/{shape_id}`
 
-## Deployment auf Raspberry Pi mit k3s
+## Raspberry Pi und echte Hardware
 
-### 1. ARM64 Images bauen
+SmartGarden ist so aufgebaut, dass du lokal entwickeln und spaeter auf einem Raspberry Pi mit k3s deployen kannst.
+
+### 1. ARM64-Images bauen
 
 ```bash
 ./scripts/build-arm64.sh
@@ -219,74 +155,68 @@ Hinweis: Für ein echtes lokales k3d-Deployment müssen die Docker-Images im Clu
 ./scripts/deploy-pi.sh
 ```
 
-Das Pi-Deployment nutzt bewusst die Pi-spezifischen Manifeste:
+Das Pi-Deployment nutzt Pi-spezifische Manifeste:
 
 - `k8s/backend-deployment-pi.yaml`
 - `k8s/scheduler-deployment-pi.yaml`
 
-Dabei gilt auf dem Pi:
+Auf dem Pi gilt:
 
-- `backend` läuft mit `replicas: 1`, damit der kleine Knoten stabil bleibt
-- `scheduler` läuft mit `replicas: 1`
-- das Backend nutzt eine `startupProbe` und großzügigere Health-Probes, damit der API-Server nach Reboots oder auf langsamerem ARM-Storage sauber hochkommt
+- `backend` laeuft mit `replicas: 1`, damit kleine Nodes stabil bleiben
+- `scheduler` laeuft mit `replicas: 1`
+- `GPIO_MODE=real` ist fuer echte Hardware vorgesehen
+- `/dev/gpiochip0` ist im Scheduler-Manifest als `hostPath` vorbereitet
 
 Vor dem Pi-Deployment:
 
 - `.env` mit echtem `POSTGRES_PASSWORD` anlegen
-- optional `OPENAI_API_KEY` als Kubernetes-Secret setzen, damit der KI-Zonenassistent die ChatGPT API nutzt; ohne Key fällt das Backend auf die lokale fachliche Vorschlagslogik zurück
+- optional `OPENAI_API_KEY` als Kubernetes-Secret setzen, damit der KI-Zonenassistent die ChatGPT API nutzt
 - optional `k8s/secret.example.yaml` als Vorlage ansehen, aber nicht direkt verwenden
 - Images auf dem Pi oder in einer erreichbaren Registry bereitstellen
 
-### 4. Feste IP auf dem Pi
+## GPIO-Hinweise
 
-Der verifizierte Pi-Betrieb in diesem Projekt nutzt eine feste WLAN-IP:
+- Lokal: `GPIO_MODE=simulated`
+- Pi: `GPIO_MODE=real`
+- Fuer den Pi ist in `k8s/scheduler-deployment-pi.yaml` ein `hostPath` fuer `/dev/gpiochip0` vorbereitet.
+- Der `RealGpioAdapter` ist vorbereitet. Fuer echte Hardware muss die konkrete `libgpiod`-Ansteuerung passend zu Relaisboard, Pins und Sicherheitslogik ergaenzt werden.
 
-- Pi-IP: `192.168.178.193`
-- Gateway: `192.168.178.1`
-- DNS: `192.168.178.1`, `1.1.1.1`
-- WLAN: `WLAN-Y23TGM`
+Teste echte Hardware zuerst mit genau einer Zone, kurzer Laufzeit und ohne Wasserlast. Erst wenn Relais, Ventil und Stop-All sauber funktionieren, sollte Wasser ins System.
 
-Die feste IP wurde über `NetworkManager` auf dem Pi gesetzt. Wenn du sie auf einem anderen Netz übernimmst, passe mindestens diese Werte an:
+## Wetterlogik
 
-- `ipv4.addresses`
-- `ipv4.gateway`
-- `ipv4.dns`
-- SSID/WLAN-Profil
+SmartGarden verwendet [Open-Meteo](https://open-meteo.com/) und braucht dafuer keinen API-Key.
 
-### 5. Zugriff im Heimnetz
+- Wetterentscheidung wird je Lauf historisiert
+- Regen- und Schwellwertlogik ist konfigurierbar
+- Fehlerverhalten ist steuerbar:
+  - `allow`
+  - `deny`
 
-Nach dem erfolgreichen Pi-Deployment ist SmartGarden direkt über die Pi-IP erreichbar:
-
-- Frontend: `http://192.168.178.193/`
-- API Runtime: `http://192.168.178.193/api/runtime`
-
-Zusätzlich bleiben die Host-basierten Ingress-Regeln erhalten:
-
-- `frontend.irrigation.local`
-- `api.irrigation.local`
-
-### 6. Autostart und Reboot-Verhalten
-
-Der Pi-Stack läuft im Autostart über `k3s`.
-
-Verifiziert wurde:
-
-- `systemctl is-enabled k3s` → `enabled`
-- nach einem echten Reboot kommt der Pi wieder unter `192.168.178.193` hoch
-- `backend`, `frontend`, `postgres` und `scheduler` starten danach automatisch wieder
-
-Praktische Prüfkommandos auf dem Pi:
-
-```bash
-systemctl is-active k3s
-sudo kubectl -n irrigation get pods
-curl -I http://127.0.0.1/
-curl http://127.0.0.1/api/runtime
+```mermaid
+flowchart LR
+    Request["Run soll starten"] --> Enabled{"Weather aktiv?"}
+    Enabled -- Nein --> Allow["allow"]
+    Enabled -- Ja --> Fetch["Forecast laden"]
+    Fetch --> Error{"API Fehler?"}
+    Error -- Ja + allow --> Allow
+    Error -- Ja + deny --> Block["error / block"]
+    Error -- Nein --> Compare["Thresholds vergleichen"]
+    Compare -->|Regen erwartet| Skip["skip"]
+    Compare -->|unter Threshold| Allow
 ```
 
-### 7. Automatisches Deployment nach grüner CI
+## Lokales Kubernetes mit k3d
 
-GitHub Actions führt Backend-Tests, Frontend-Build und Frontend-Unit-Tests für jeden Branch aus. Nach grünen Tests baut GitHub ARM64-Images und veröffentlicht sie in der GitHub Container Registry. Der Pi pollt danach GitHub und deployt nur Commits, deren Checks grün sind; auf dem Pi werden keine Docker-Images gebaut.
+```bash
+./scripts/deploy-local-k3d.sh
+```
+
+Der lokale Scheduler nutzt bewusst `GPIO_MODE=simulated` ohne Device-Mount. Auf dem Pi kommt stattdessen das Pi-spezifische Scheduler-Manifest mit `/dev/gpiochip0` dazu.
+
+## Automatisches Deployment nach gruenem CI
+
+GitHub Actions fuehrt Backend-Tests, Frontend-Build und Frontend-Unit-Tests aus. Nach gruenen Tests koennen ARM64-Images in die GitHub Container Registry veroeffentlicht und vom Pi deployed werden.
 
 Einmalig auf dem Pi:
 
@@ -295,47 +225,20 @@ cd /home/pi/SmartGarden
 SMARTGARDEN_AUTO_DEPLOY_BRANCH=main bash scripts/install-pi-auto-deploy.sh
 ```
 
-Der Timer deployt automatisch den konfigurierten Hauptbranch. Feature-Branches werden nicht automatisch deployt. Bei Bedarf manuell auf dem Pi:
-
-```bash
-cd /home/pi/SmartGarden
-bash scripts/pi-deploy-branch.sh ai
-```
-
-Auch dieser manuelle Feature-Deploy bricht ab, wenn die GitHub-CI für den Branch-Commit nicht grün ist.
-
 Die Images werden per Commit-SHA referenziert:
 
 - `ghcr.io/philippgri11/smartgarden-backend:<commit-sha>`
 - `ghcr.io/philippgri11/smartgarden-frontend:<commit-sha>`
 
-Wenn die GHCR-Packages privat sind, braucht der Cluster zusätzlich ein `imagePullSecret` mit Leserechten auf die Registry. Alternativ können die beiden Packages in GitHub öffentlich geschaltet werden.
-
-## GPIO-Hinweise
-
-- Lokal: `GPIO_MODE=simulated`
-- Pi: `GPIO_MODE=real`
-- Für den Pi ist in `k8s/scheduler-deployment-pi.yaml` ein `hostPath` für `/dev/gpiochip0` vorbereitet.
-- Der `RealGpioAdapter` ist absichtlich nur vorbereitet. Für echte Hardware musst du dort die `libgpiod`-Ansteuerung ergänzen.
-
-## Wetter-API
-
-- Verwendet: [Open-Meteo](https://open-meteo.com/)
-- Kein API-Key nötig
-- Entscheidung wird je Lauf historisiert
-- Fehlerverhalten konfigurierbar:
-  - `allow`
-  - `deny`
-
 ## Datenbankmigrationen
 
-Migrationen laufen lokal und im Cluster über:
+Migrationen laufen lokal und im Cluster ueber:
 
 ```bash
 alembic upgrade head
 ```
 
-Tabellen:
+Wichtige Tabellen:
 
 - `zones`
 - `schedules`
@@ -345,21 +248,47 @@ Tabellen:
 - `garden_maps`
 - `zone_map_shapes`
 
-## Backup-Hinweis
+## Backup
 
-Für den Pi-Betrieb solltest du regelmäßige Postgres-Backups einplanen, zum Beispiel per `pg_dump` auf ein externes Volume oder NAS. Im StatefulSet ist Persistenz nur die erste Schutzschicht, kein Backup.
+Plane fuer den Pi-Betrieb regelmaessige PostgreSQL-Backups ein, zum Beispiel per `pg_dump` auf ein externes Volume oder NAS. Persistenz im StatefulSet ist nur die erste Schutzschicht, kein Backup.
 
 ## Troubleshooting
 
-- Wenn keine Bewässerungen starten, prüfe zuerst `scheduler`-Logs.
-- Wenn Läufe mehrfach auftauchen, prüfe Scheduler-Replica-Anzahl und Advisory-Lock-Konfiguration.
+- Wenn keine Bewaesserungen starten, pruefe zuerst die `scheduler`-Logs.
+- Wenn Laeufe mehrfach auftauchen, pruefe Scheduler-Replica-Anzahl und Advisory-Lock-Konfiguration.
 - Wenn Open-Meteo nicht erreichbar ist, greift `WEATHER_FAIL_MODE`.
-- Wenn du auf dem Pi echte GPIOs nutzt, teste zuerst mit genau einer Zone und Hardware ohne Wasserlast.
+- Wenn echte GPIOs genutzt werden, teste zuerst mit einer einzelnen Zone.
+- Wenn der Pi nach einem Reboot langsam startet, pruefe `k3s`, Pods und Backend-Probes.
 
-## Sinnvolle nächste Schritte
+Praktische Pruefkommandos auf dem Pi:
 
-1. `RealGpioAdapter` mit echter `libgpiod`-Ansteuerung implementieren.
-2. Optionale Authentifizierung vor die API setzen.
-3. DB-Integrationstests per Compose ergänzen.
-4. Image-Registry-Workflow für Pi/k3s ergänzen.
-5. Optional dedizierten GPIO-Controller-Prozess aus dem Scheduler herauslösen, falls später komplexere Hardwarelogik nötig wird.
+```bash
+systemctl is-active k3s
+sudo kubectl -n irrigation get pods
+curl -I http://127.0.0.1/
+curl http://127.0.0.1/api/runtime
+```
+
+## Mitmachen
+
+Beitraege sind willkommen, besonders fuer:
+
+- echte `libgpiod`-Implementierungen fuer verschiedene Relaisboards
+- Sensorintegration fuer Bodenfeuchte, Tankstand oder Durchfluss
+- bessere Startprofile fuer typische Pflanzen und Zonen
+- robuste Backup- und Restore-Skripte
+- Installationsanleitungen fuer verschiedene Raspberry-Pi-Setups
+
+## Free to use und Donate
+
+SmartGarden ist free to use und steht unter der MIT-Lizenz. Du darfst es nutzen, veraendern, forken und fuer dein eigenes DIY-Home-Projekt anpassen.
+
+Wenn dir das Projekt Zeit spart oder deinen Garten ein bisschen smarter macht, kannst du freiwillig einen Kaffee, ein Bauteil oder die naechste Testhardware spendieren:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=YOUR_BUTTON_ID)
+
+Ersetze `YOUR_BUTTON_ID` durch die Button-ID deines PayPal-Donate-Buttons.
+
+## Lizenz
+
+MIT License. Details stehen in [LICENSE](LICENSE).

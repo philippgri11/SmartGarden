@@ -125,6 +125,7 @@ class SchedulerRunner:
                 last_run_at=self._last_adaptive_run_at(session, zone_id=zone.id),
                 max_duration_minutes=zone.max_duration_minutes,
                 already_watered_today=self._has_adaptive_run_today(session, zone_id=zone.id, now=now),
+                model_config=self.settings.zone_irrigation_model_config(),
             )
             if not decision.scheduled_at:
                 continue
