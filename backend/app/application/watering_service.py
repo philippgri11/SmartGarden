@@ -399,6 +399,7 @@ class WateringService:
                 ),
                 scheduled_duration_minutes=run.requested_duration_minutes,
                 max_duration_minutes=zone.max_duration_minutes,
+                model_config=self.settings.zone_irrigation_model_config(),
             )
             if weather_result.decision == WeatherDecisionKind.SKIP and recommendation.decision == "allow":
                 weather_result.decision = WeatherDecisionKind.ALLOW

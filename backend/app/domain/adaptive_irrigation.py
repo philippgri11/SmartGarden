@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
-from app.domain.zone_irrigation import ZoneWeatherFacts, build_zone_irrigation_recommendation
+from app.domain.zone_irrigation import ZoneIrrigationModelConfig, ZoneWeatherFacts, build_zone_irrigation_recommendation
 
 
 ADAPTIVE_REASON_PREFIX = "adaptive irrigation:"
@@ -75,6 +75,7 @@ def decide_adaptive_plan(
     last_run_at: datetime | None,
     max_duration_minutes: int,
     already_watered_today: bool,
+    model_config: ZoneIrrigationModelConfig | None = None,
 ) -> AdaptivePlanDecision:
     slot = current_adaptive_slot(plan, now=now)
     if slot is None:
@@ -106,6 +107,7 @@ def decide_adaptive_plan(
         weather=weather,
         scheduled_duration_minutes=plan.baseDurationMinutes,
         max_duration_minutes=min(plan.maxDurationMinutes, max_duration_minutes),
+        model_config=model_config,
     )
     duration = max(plan.minDurationMinutes, min(recommendation.adjusted_duration_minutes, plan.maxDurationMinutes, max_duration_minutes))
     effective_rain = recommendation.effective_rain_mm

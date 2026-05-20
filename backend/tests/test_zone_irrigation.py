@@ -1,5 +1,6 @@
 from app.application.schemas import ZoneIrrigationProfile
-from app.domain.zone_irrigation import ZoneWeatherFacts, build_zone_irrigation_recommendation
+from app.config import Settings
+from app.domain.zone_irrigation import ZoneIrrigationModelConfig, ZoneWeatherFacts, build_zone_irrigation_recommendation
 
 
 def test_zone_irrigation_increases_duration_for_hot_sunny_raised_bed() -> None:
@@ -75,3 +76,66 @@ def test_zone_irrigation_skips_when_effective_rain_covers_need() -> None:
     assert result.decision == "skip"
     assert result.adjusted_duration_minutes == 0
     assert result.effective_rain_mm > result.estimated_need_mm
+
+
+def test_zone_irrigation_uses_model_config_for_forecast_rain_weight() -> None:
+    profile = ZoneIrrigationProfile(
+        zoneType="lawn",
+        plantType="grass",
+        sunExposure="partial_shade",
+        rainExposure="full",
+        rainEffectiveness=1.0,
+        waterNeedLevel="medium",
+        baseWaterNeedMmPerDay=3.0,
+        temperatureSensitivity=1.0,
+        sunSensitivity=1.0,
+        containerFactor=1.0,
+        dryingSpeed="normal",
+        wateringFrequencyPreference="normal",
+        preferredTimeWindow="early_morning",
+        strategy="balanced",
+        riskProfile="balanced",
+        explanation="Testprofil",
+    )
+    weather = ZoneWeatherFacts(
+        temperature_max_c=22,
+        rain_last_24h_mm=0,
+        rain_next_24h_mm=6,
+        cloud_cover_avg_pct=45,
+    )
+
+    conservative = build_zone_irrigation_recommendation(
+        profile=profile,
+        weather=weather,
+        scheduled_duration_minutes=10,
+        max_duration_minutes=20,
+        model_config=ZoneIrrigationModelConfig(forecast_rain_weight=0.0),
+    )
+    trusting_forecast = build_zone_irrigation_recommendation(
+        profile=profile,
+        weather=weather,
+        scheduled_duration_minutes=10,
+        max_duration_minutes=20,
+        model_config=ZoneIrrigationModelConfig(forecast_rain_weight=1.0),
+    )
+
+    assert conservative.decision == "allow"
+    assert trusting_forecast.decision == "skip"
+    assert trusting_forecast.effective_rain_mm > conservative.effective_rain_mm
+
+
+def test_settings_build_zone_irrigation_model_config() -> None:
+    settings = Settings(
+        environment="test",
+        irrigation_model_neutral_temperature_c=21.0,
+        irrigation_model_forecast_rain_weight=0.25,
+        irrigation_model_min_duration_multiplier=1.4,
+        irrigation_model_max_duration_multiplier=0.4,
+    )
+
+    config = settings.zone_irrigation_model_config()
+
+    assert config.neutral_temperature_c == 21.0
+    assert config.forecast_rain_weight == 0.25
+    assert config.min_duration_multiplier == 0.4
+    assert config.max_duration_multiplier == 1.4
