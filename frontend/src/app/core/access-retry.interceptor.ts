@@ -47,8 +47,9 @@ function isLikelyAccessRefreshError(error: unknown): boolean {
   }
 
   // Cloudflare Access redirects stale XHR sessions to its login host. Browsers
-  // surface that as status 0/CORS instead of a JSON response.
-  return error.status === 0;
+  // surface that as status 0/CORS instead of a JSON response. The Pages proxy
+  // also normalizes upstream Access redirects to a retryable 401.
+  return error.status === 0 || (error.status === 401 && error.headers.get('X-SmartGarden-Access-Refresh') === 'required');
 }
 
 function ensureRemoteProxySession(): Promise<void> {

@@ -2,7 +2,7 @@ const SESSION_COOKIE = 'SG_PROXY_SESSION';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 
 export async function createSessionCookie(request, env) {
-  const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion');
+  const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion') || readCookie(request.headers.get('cookie') || '', 'CF_Authorization');
   if (!accessJwt) {
     return new Response('Cloudflare Access session missing', { status: 401 });
   }

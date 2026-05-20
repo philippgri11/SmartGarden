@@ -2,6 +2,7 @@ import { hasValidSession } from '../_shared/session.js';
 
 const API_ORIGIN = 'https://smartgarden-api.gloriaundphilipp.de';
 const REMOTE_UI_HOSTS = new Set(['smartgarden.gloriaundphilipp.de', 'mach-nass.de']);
+const ACCESS_REFRESH_HEADER = 'X-SmartGarden-Access-Refresh';
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -66,6 +67,17 @@ export async function onRequest(context) {
     redirect: 'manual'
   });
 
+  if (isCloudflareAccessRedirect(response)) {
+    return new Response('Cloudflare Access session refresh required', {
+      status: 401,
+      headers: {
+        'cache-control': 'no-store',
+        'content-type': 'text/plain',
+        [ACCESS_REFRESH_HEADER]: 'required'
+      }
+    });
+  }
+
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete('content-encoding');
   responseHeaders.delete('content-length');
@@ -76,6 +88,15 @@ export async function onRequest(context) {
     statusText: response.statusText,
     headers: responseHeaders
   });
+}
+
+function isCloudflareAccessRedirect(response) {
+  if (![301, 302, 303, 307, 308].includes(response.status)) {
+    return false;
+  }
+
+  const location = response.headers.get('location') || '';
+  return location.includes('/cdn-cgi/access/login/') || location.includes('.cloudflareaccess.com/');
 }
 
 function getCookie(cookieHeader, name) {
