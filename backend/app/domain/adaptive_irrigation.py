@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
-from app.domain.zone_irrigation import ZoneIrrigationModelConfig, ZoneWeatherFacts, build_zone_irrigation_recommendation
+from app.domain.zone_irrigation import (
+    ZoneIrrigationModelConfig,
+    ZoneIrrigationRecommendation,
+    ZoneWeatherFacts,
+    build_zone_irrigation_recommendation,
+)
 
 
 ADAPTIVE_REASON_PREFIX = "adaptive irrigation:"
@@ -24,6 +29,7 @@ class AdaptivePlanDecision:
     scheduled_at: datetime | None
     reason: str
     details: list[str]
+    recommendation: ZoneIrrigationRecommendation | None = None
 
 
 def expand_time_windows(plan: AdaptiveIrrigationPlan | dict) -> list[str]:
@@ -119,6 +125,7 @@ def decide_adaptive_plan(
             slot,
             f"Wirksamer Regen deckt den Bedarf: {effective_rain:.1f} mm zählen für diese Zone.",
             recommendation.details,
+            recommendation,
         )
     if rain_next >= plan.rainDelayThresholdMm and recommendation.net_need_mm < plan.highNeedThresholdMm:
         return AdaptivePlanDecision(
@@ -127,12 +134,13 @@ def decide_adaptive_plan(
             slot,
             f"Regen wird erwartet ({rain_next:.1f} mm) und der Netto-Bedarf ist noch nicht hoch genug.",
             recommendation.details,
+            recommendation,
         )
     if recommendation.decision == "skip":
-        return AdaptivePlanDecision(False, 0, slot, recommendation.explanation, recommendation.details)
+        return AdaptivePlanDecision(False, 0, slot, recommendation.explanation, recommendation.details, recommendation)
 
     reason = (
         f"Adaptiver Lauf geplant: {duration} Minuten im Fenster {slot.strftime('%H:%M')}. "
         f"{recommendation.explanation}"
     )
-    return AdaptivePlanDecision(True, duration, slot, reason, recommendation.details)
+    return AdaptivePlanDecision(True, duration, slot, reason, recommendation.details, recommendation)
