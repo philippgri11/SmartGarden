@@ -118,7 +118,50 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
 
       <div class="scenario-table-wrap" *ngIf="pods() as podState">
         <p class="muted">Namespace: {{ podState.namespace }}</p>
-        <table class="scenario-table system-pods-table" *ngIf="podState.pods.length; else noPods">
+
+        <div class="pod-summary-grid" *ngIf="podState.available">
+          <div>
+            <span class="muted">Pods bereit</span>
+            <strong>{{ resourceSummary().readyPods }}/{{ resourceSummary().podCount }}</strong>
+          </div>
+          <div>
+            <span class="muted">CPU aktuell</span>
+            <strong>{{ formatCpu(resourceSummary().cpuMillicores) }}</strong>
+          </div>
+          <div>
+            <span class="muted">Speicher aktuell</span>
+            <strong>{{ formatMemory(resourceSummary().memoryMebibytes) }}</strong>
+          </div>
+          <div>
+            <span class="muted">Restarts</span>
+            <strong>{{ resourceSummary().restartCount }}</strong>
+          </div>
+        </div>
+
+        <h4 class="table-section-title" *ngIf="podState.deployments.length">Workloads</h4>
+        <table class="scenario-table responsive-card-table system-deployments-table" *ngIf="podState.deployments.length">
+          <thead>
+            <tr>
+              <th>Deployment</th>
+              <th>Gewünscht</th>
+              <th>Bereit</th>
+              <th>Verfügbar</th>
+              <th>Aktualisiert</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let deployment of podState.deployments">
+              <td data-label="Deployment"><strong>{{ deployment.name }}</strong></td>
+              <td data-label="Gewünscht">{{ deployment.desired_replicas }}</td>
+              <td data-label="Bereit">{{ deployment.ready_replicas }}</td>
+              <td data-label="Verfügbar">{{ deployment.available_replicas }}</td>
+              <td data-label="Aktualisiert">{{ deployment.updated_replicas }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h4 class="table-section-title" *ngIf="podState.pods.length">Pods</h4>
+        <table class="scenario-table responsive-card-table system-pods-table" *ngIf="podState.pods.length; else noPods">
           <thead>
             <tr>
               <th>Pod</th>
@@ -134,7 +177,7 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
             <tr *ngFor="let pod of podState.pods">
               <td data-label="Pod">
                 <strong>{{ pod.app || pod.name }}</strong>
-                <span class="muted table-subline">{{ pod.name }}</span>
+                <span class="muted table-subline">Pod: {{ pod.name }}</span>
               </td>
               <td data-label="Status">
                 <span class="status-chip" [class.status-paused]="!pod.ready">{{ pod.phase }}</span>
@@ -229,6 +272,16 @@ export class SettingsComponent {
   readonly pods = signal<SystemPodsResponse | null>(null);
   readonly podsLoading = signal(false);
   readonly podsError = signal('');
+  readonly resourceSummary = computed(() => {
+    const pods = this.pods()?.pods ?? [];
+    return {
+      podCount: pods.length,
+      readyPods: pods.filter((pod) => pod.ready).length,
+      restartCount: pods.reduce((sum, pod) => sum + pod.restart_count, 0),
+      cpuMillicores: pods.reduce((sum, pod) => sum + (pod.cpu_millicores ?? 0), 0),
+      memoryMebibytes: pods.reduce((sum, pod) => sum + (pod.memory_mebibytes ?? 0), 0),
+    };
+  });
   private podsLoaded = false;
 
   readonly form = this.fb.nonNullable.group({

@@ -1435,6 +1435,41 @@ app-expert-section {
   overflow-wrap: anywhere;
 }
 
+.pod-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.pod-summary-grid > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-strong);
+}
+
+.pod-summary-grid span,
+.pod-summary-grid strong {
+  display: block;
+}
+
+.pod-summary-grid strong {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.table-section-title {
+  margin: 18px 0 8px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.responsive-card-table td {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1200px) {
   .map-layout.smart-map-layout {
     grid-template-columns: 1fr;
@@ -1904,6 +1939,77 @@ app-expert-section {
     font-weight: 800;
   }
 
+  .pod-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .system-pods-table,
+  .system-deployments-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .system-pods-table thead,
+  .system-deployments-table thead {
+    display: none;
+  }
+
+  .system-pods-table,
+  .system-pods-table tbody,
+  .system-pods-table tr,
+  .system-pods-table td,
+  .system-deployments-table,
+  .system-deployments-table tbody,
+  .system-deployments-table tr,
+  .system-deployments-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .system-pods-table tr,
+  .system-deployments-table tr {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface-strong);
+    box-shadow: 0 8px 22px rgba(20, 34, 25, 0.06);
+  }
+
+  .system-pods-table tr + tr,
+  .system-deployments-table tr + tr {
+    margin-top: 12px;
+  }
+
+  .system-pods-table td,
+  .system-deployments-table td {
+    display: grid;
+    grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(205, 222, 207, 0.65);
+  }
+
+  .system-pods-table td::before,
+  .system-deployments-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 700;
+  }
+
+  .system-pods-table td:first-child,
+  .system-deployments-table td:first-child {
+    padding-top: 0;
+  }
+
+  .system-pods-table td:last-child,
+  .system-deployments-table td:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
   .sequence-note {
     margin-top: 6px;
   }
@@ -1940,6 +2046,16 @@ app-expert-section {
   .section-head .muted,
   .system-status-top p {
     display: none;
+  }
+
+  .pod-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-pods-table td,
+  .system-deployments-table td {
+    grid-template-columns: minmax(88px, 40%) minmax(0, 1fr);
+    gap: 10px;
   }
 
   .system-status-card,
