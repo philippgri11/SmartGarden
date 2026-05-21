@@ -40,6 +40,7 @@ def test_system_pods_endpoint_returns_pod_status(client: TestClient, monkeypatch
                     "restart_count": 0,
                     "node_name": "pi",
                     "pod_ip": "10.42.0.10",
+                    "created_at": "2026-05-20T05:58:00Z",
                     "started_at": "2026-05-20T06:00:00Z",
                     "cpu_millicores": 12.4,
                     "memory_mebibytes": 92.5,
@@ -56,4 +57,5 @@ def test_system_pods_endpoint_returns_pod_status(client: TestClient, monkeypatch
     assert payload["available"] is True
     assert payload["deployments"][0]["desired_replicas"] == 2
     assert payload["pods"][0]["app"] == "backend"
+    assert payload["pods"][0]["created_at"] == "2026-05-20T05:58:00Z"
     assert payload["pods"][0]["cpu_millicores"] == 12.4

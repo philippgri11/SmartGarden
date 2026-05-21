@@ -110,6 +110,7 @@ class KubernetesStatusService:
             "restart_count": restart_count,
             "node_name": spec.get("nodeName"),
             "pod_ip": status.get("podIP"),
+            "created_at": metadata.get("creationTimestamp"),
             "started_at": status.get("startTime"),
             "cpu_millicores": self._cpu_millicores(metrics),
             "memory_mebibytes": self._memory_mebibytes(metrics),

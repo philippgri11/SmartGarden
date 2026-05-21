@@ -193,6 +193,7 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
               <th>Restarts</th>
               <th>CPU</th>
               <th>Speicher</th>
+              <th>Erstellt</th>
               <th>Node</th>
             </tr>
           </thead>
@@ -209,6 +210,10 @@ import { ExpertSectionComponent } from '../../shared/expert-section.component';
               <td data-label="Restarts">{{ pod.restart_count }}</td>
               <td data-label="CPU">{{ formatCpu(pod.cpu_millicores) }}</td>
               <td data-label="Speicher">{{ formatMemory(pod.memory_mebibytes) }}</td>
+              <td data-label="Erstellt">
+                <strong>{{ formatPodCreatedAt(pod.created_at) }}</strong>
+                <span class="muted table-subline">{{ podAgeLabel(pod.created_at) }}</span>
+              </td>
               <td data-label="Node">{{ pod.node_name || '-' }}</td>
             </tr>
           </tbody>
@@ -443,6 +448,41 @@ export class SettingsComponent {
     return value === null || value === undefined ? 'keine Metrics' : `${value.toFixed(1).replace('.', ',')} MiB`;
   }
 
+  formatPodCreatedAt(value: string | null | undefined): string {
+    const createdAt = this.parseDate(value);
+    if (!createdAt) {
+      return '-';
+    }
+    return new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Berlin',
+    }).format(createdAt);
+  }
+
+  podAgeLabel(value: string | null | undefined): string {
+    const createdAt = this.parseDate(value);
+    if (!createdAt) {
+      return '';
+    }
+    const ageMinutes = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 60000));
+    if (ageMinutes < 1) {
+      return 'gerade erstellt';
+    }
+    if (ageMinutes < 60) {
+      return `seit ${ageMinutes} Min.`;
+    }
+    const ageHours = Math.floor(ageMinutes / 60);
+    if (ageHours < 48) {
+      return `seit ${ageHours} Std.`;
+    }
+    const ageDays = Math.floor(ageHours / 24);
+    return `seit ${ageDays} Tagen`;
+  }
+
   private patchSettings(settings: AppSettings): void {
     this.form.patchValue({
       ...settings,
@@ -450,6 +490,14 @@ export class SettingsComponent {
       system_paused_until: settings.system_paused_until ?? '',
       safety_stop_reason: settings.safety_stop_reason ?? '',
     });
+  }
+
+  private parseDate(value: string | null | undefined): Date | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   private updateMapPreview(): void {

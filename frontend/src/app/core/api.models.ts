@@ -365,6 +365,7 @@ export interface SystemPodStatus {
   restart_count: number;
   node_name?: string | null;
   pod_ip?: string | null;
+  created_at?: string | null;
   started_at?: string | null;
   cpu_millicores?: number | null;
   memory_mebibytes?: number | null;
