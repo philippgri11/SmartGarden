@@ -240,6 +240,28 @@ Die Images werden per Commit-SHA referenziert:
 - `ghcr.io/philippgri11/smartgarden-backend:<commit-sha>`
 - `ghcr.io/philippgri11/smartgarden-frontend:<commit-sha>`
 
+## Versionsmail fuer neue Aenderungen
+
+Wenn eine neue Version fertig ist, soll die Mail nicht wie ein technisches Git-Protokoll aussehen. Deshalb gibt es `VERSION.md`.
+
+So funktioniert es:
+
+1. `VERSION.md` in einfachen Worten aktualisieren.
+2. Aenderung committen und nach GitHub bringen.
+3. Eine Version markieren.
+4. GitHub Actions verschickt automatisch die Mail.
+
+Beispiel:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Die Mail wird an die Empfaenger aus dem GitHub Secret `CHANGELOG_RECIPIENTS` gesendet. Die SMTP-Zugangsdaten liegen ebenfalls als GitHub Secrets.
+
+Wenn `VERSION.md` leer oder nicht vorhanden waere, faellt das Script auf eine technische Liste der Git-Commits zurueck. Normalerweise soll aber `VERSION.md` gepflegt werden.
+
 ## Datenbankmigrationen
 
 Migrationen laufen lokal und im Cluster ueber:
