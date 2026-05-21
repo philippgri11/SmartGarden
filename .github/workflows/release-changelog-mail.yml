@@ -1,0 +1,65 @@
+name: Release changelog mail
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to send, for example v1.2.0"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-mail:
+    name: Send changelog mail
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tags
+        id: tags
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          current_tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          git rev-parse "$current_tag" >/dev/null
+          previous_tag="$(git tag --sort=-creatordate --merged "$current_tag" | awk -v current="$current_tag" '$0 != current { print; exit }')"
+          if [[ -z "$previous_tag" ]]; then
+            previous_tag="$(git rev-list --max-parents=0 "$current_tag" | tail -n 1)"
+          fi
+          compare_url="https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${current_tag}"
+          {
+            echo "current_tag=$current_tag"
+            echo "previous_tag=$previous_tag"
+            echo "compare_url=$compare_url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Preview changelog
+        run: |
+          python3 scripts/send-changelog-mail.py \
+            --previous-tag "${{ steps.tags.outputs.previous_tag }}" \
+            --current-tag "${{ steps.tags.outputs.current_tag }}" \
+            --compare-url "${{ steps.tags.outputs.compare_url }}" \
+            --dry-run
+
+      - name: Send changelog mail
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          CHANGELOG_RECIPIENTS: ${{ secrets.CHANGELOG_RECIPIENTS }}
+        run: |
+          python3 scripts/send-changelog-mail.py \
+            --previous-tag "${{ steps.tags.outputs.previous_tag }}" \
+            --current-tag "${{ steps.tags.outputs.current_tag }}" \
+            --compare-url "${{ steps.tags.outputs.compare_url }}"
