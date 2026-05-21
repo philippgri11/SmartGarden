@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml/badge.svg)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
 [![Backend coverage](https://img.shields.io/badge/Backend%20Coverage-75%25-1f7a4d?logo=pytest&logoColor=white)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
-[![Frontend coverage](https://img.shields.io/badge/Frontend%20Coverage-21.21%25-d48d3f?logo=vitest&logoColor=white)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
+[![Frontend coverage](https://img.shields.io/badge/Frontend%20Coverage-33.79%25-d48d3f?logo=vitest&logoColor=white)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-1f7a4d.svg)](LICENSE)
 [![Frontend: Angular](https://img.shields.io/badge/Frontend-Angular-DD0031?logo=angular&logoColor=white)](frontend)
 [![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](backend)
@@ -25,7 +25,7 @@ Das Projekt ist fuer Menschen gedacht, die ihre Terrasse, Hochbeete, Balkonpflan
 - PostgreSQL-Persistenz fuer Zonen, Laeufe, Wetterentscheidungen und Systemstatus
 - Klare Trennung zwischen API, Scheduler, Frontend, Datenbank und Hardwareadapter
 - Sicherheitslogik mit Maximaldauer, Stop-All-Endpunkt und kontrolliertem Scheduler
-- CI mit Backend-Coverage 75% und Frontend-Coverage 21.21% als GitHub-Actions-Reports
+- CI mit Backend-Coverage 75% und Frontend-Coverage 33.79% als GitHub-Actions-Reports
 
 ## Warum fuer DIY-Home-Projekte?
 
