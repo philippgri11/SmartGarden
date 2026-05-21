@@ -4,7 +4,6 @@ from app.application.alerting_service import AlertingService
 from app.application.heartbeat_service import HeartbeatService
 from app.application.watchdog_service import WatchdogService
 from app.config import Settings
-from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX
 from app.domain.models import RunStatus, TriggerType
 from app.infrastructure.db import orm
 from app.infrastructure.db.repositories import WateringRunRepository
@@ -36,7 +35,7 @@ def test_watchdog_triggers_safety_stop_for_duplicate_adaptive_runs(db_session) -
             duration_minutes=7,
             scheduled_for=datetime(2026, 5, 16).date(),
             scheduled_time=time(5, 36),
-            reason=f"{ADAPTIVE_REASON_PREFIX} test",
+            reason="Kein kritischer Regen erwartet: bis zu 0 % Regenwahrscheinlichkeit und 0,0 mm Niederschlag.",
         )
     db_session.commit()
     HeartbeatService(db_session).beat(component="scheduler", status="ok", now=datetime(2026, 5, 16, 6, 59, tzinfo=UTC))

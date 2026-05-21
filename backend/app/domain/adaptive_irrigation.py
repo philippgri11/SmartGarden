@@ -19,6 +19,11 @@ WINDOW_STARTS = {
     "morning": time(7, 0),
     "evening": time(19, 0),
 }
+WINDOW_ENDS = {
+    "early_morning": time(7, 0),
+    "morning": time(11, 0),
+    "evening": time(22, 0),
+}
 WINDOW_GRACE_MINUTES = 25
 
 
@@ -70,6 +75,32 @@ def next_adaptive_slot(plan: AdaptiveIrrigationPlan | dict, *, now: datetime) ->
             if slot > now:
                 candidates.append(slot)
     return min(candidates) if candidates else None
+
+
+def adaptive_window_bounds(plan: AdaptiveIrrigationPlan | dict, *, slot: datetime) -> tuple[datetime, datetime] | None:
+    parsed = plan if isinstance(plan, AdaptiveIrrigationPlan) else AdaptiveIrrigationPlan.model_validate(plan)
+    for window in expand_time_windows(parsed):
+        start_time = WINDOW_STARTS.get(window)
+        end_time = WINDOW_ENDS.get(window)
+        if not start_time or not end_time:
+            continue
+        if slot.time() == start_time:
+            return (
+                datetime.combine(slot.date(), start_time, tzinfo=slot.tzinfo),
+                datetime.combine(slot.date(), end_time, tzinfo=slot.tzinfo),
+            )
+    return None
+
+
+def fits_adaptive_window(plan: AdaptiveIrrigationPlan | dict, *, slot: datetime, start: datetime, duration_minutes: int) -> bool:
+    bounds = adaptive_window_bounds(plan, slot=slot)
+    if bounds is None:
+        return True
+    window_start, window_end = bounds
+    if start.tzinfo is None and slot.tzinfo is not None:
+        start = start.replace(tzinfo=slot.tzinfo)
+    end = start + timedelta(minutes=duration_minutes)
+    return window_start <= start and end <= window_end
 
 
 def decide_adaptive_plan(

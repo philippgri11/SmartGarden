@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.base import Base
@@ -61,12 +61,17 @@ class Schedule(Base):
 
 class WateringRun(Base):
     __tablename__ = "watering_runs"
-    __table_args__ = (UniqueConstraint("schedule_id", "scheduled_for", "scheduled_time", name="uq_watering_run_schedule_slot"),)
+    __table_args__ = (
+        UniqueConstraint("schedule_id", "scheduled_for", "scheduled_time", name="uq_watering_run_schedule_slot"),
+        Index("ix_watering_runs_occurrence_key", "occurrence_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id", ondelete="CASCADE"), nullable=False)
     schedule_id: Mapped[int | None] = mapped_column(ForeignKey("schedules.id", ondelete="SET NULL"))
     trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")
+    occurrence_key: Mapped[str | None] = mapped_column(String(160))
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     scheduled_for: Mapped[date | None] = mapped_column(Date)
     scheduled_time: Mapped[time | None]
@@ -78,6 +83,8 @@ class WateringRun(Base):
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
     stop_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    planning_reason: Mapped[str | None] = mapped_column(Text)
+    execution_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     zone: Mapped["Zone"] = relationship(back_populates="runs")

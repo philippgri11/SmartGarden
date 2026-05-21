@@ -252,6 +252,8 @@ class WateringRunResponse(BaseModel):
     zone_id: int
     schedule_id: int | None
     trigger_type: Literal["manual", "scheduled"]
+    source_type: Literal["manual", "static_schedule", "adaptive_rule"] = "manual"
+    occurrence_key: str | None = None
     status: str
     scheduled_for: datetime | None = None
     requested_duration_minutes: int
@@ -262,6 +264,8 @@ class WateringRunResponse(BaseModel):
     duration_seconds: int | None
     stop_requested: bool
     reason: str | None
+    planning_reason: str | None = None
+    execution_reason: str | None = None
     created_at: datetime
 
 

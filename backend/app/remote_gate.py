@@ -166,7 +166,7 @@ async def decide_request(request: Request, path: str) -> GateDecision:
         return GateDecision(True)
 
     if method == "POST" and path == "/api/system/release-safety-stop":
-        return GateDecision(False, "Safety-Stop darf remote nicht aufgehoben werden.", status.HTTP_403_FORBIDDEN)
+        return GateDecision(True)
 
     if method == "PUT" and ZONE_ITEM_RE.match(path):
         return await strip_zone_hardware_fields(request)

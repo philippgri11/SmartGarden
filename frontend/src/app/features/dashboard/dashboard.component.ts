@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { catchError, of } from 'rxjs';
 
-import { AppSettings, Zone } from '../../core/api.models';
+import { ApiService } from '../../core/api.service';
+import { AppSettings, IrrigationProjectionItem, Zone } from '../../core/api.models';
 import { UiPreferencesService } from '../../core/ui-preferences.service';
 import { AreaCardComponent } from '../../shared/area-card.component';
 import { ExpertSectionComponent } from '../../shared/expert-section.component';
@@ -35,6 +38,13 @@ export function isGermanFathersDay(date: Date = new Date()): boolean {
   return date.getFullYear() === ascensionDay.getFullYear()
     && date.getMonth() === ascensionDay.getMonth()
     && date.getDate() === ascensionDay.getDate();
+}
+
+export function isAdaptiveCapacitySkip(item: Pick<IrrigationProjectionItem, 'source' | 'status' | 'reason' | 'decision_summary'>): boolean {
+  const reason = `${item.reason ?? ''} ${item.decision_summary ?? ''}`.toLowerCase();
+  return item.source === 'adaptive_rule'
+    && item.status === 'skipped'
+    && reason.includes('zeitfenster');
 }
 
 @Component({
@@ -77,6 +87,25 @@ export function isGermanFathersDay(date: Date = new Date()): boolean {
       <p class="notice error" *ngIf="vm.error">{{ vm.error }}</p>
       <app-winter-mode-banner [active]="vm.settings.winter_mode_active" (disable)="setWinterMode(false)" />
       <app-system-status-card *ngIf="vm.summary" [summary]="vm.summary" [expertMode]="expertMode()" />
+
+      <section class="panel capacity-warning-panel" *ngIf="capacityWarnings().length">
+        <div class="capacity-warning-icon" aria-hidden="true">!</div>
+        <div>
+          <p class="warning-kicker">Automatik braucht Aufmerksamkeit</p>
+          <h3>Adaptives Zeitfenster reicht nicht aus</h3>
+          <p>
+            Mindestens ein KI-adaptiver Lauf passt rechnerisch nicht mehr in das erlaubte Bewässerungsfenster.
+            Das System startet diesen Lauf nicht automatisch später, damit z. B. Rasen nicht in ein ungeeignetes Zeitfenster rutscht.
+          </p>
+          <ul class="capacity-warning-list">
+            <li *ngFor="let item of capacityWarnings()">
+              <strong>{{ item.zone_name }}</strong>:
+              {{ formatDateTime(item.planned_start) }} für {{ item.duration_minutes }} Minuten wurde ausgesetzt.
+            </li>
+          </ul>
+          <button class="button secondary" type="button" (click)="openPlanning()">Planung prüfen</button>
+        </div>
+      </section>
 
       <section class="panel">
         <h3>Schnellaktionen</h3>
@@ -130,6 +159,8 @@ export function isGermanFathersDay(date: Date = new Date()): boolean {
   `,
 })
 export class DashboardComponent {
+  private readonly api = inject(ApiService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly preferences = inject(UiPreferencesService);
   private readonly runtime = inject(RuntimeFacade);
@@ -137,8 +168,13 @@ export class DashboardComponent {
   readonly expertMode = computed(() => this.preferences.expertMode());
   readonly manualMinutes = signal<Record<number, number>>({});
   readonly feedback = signal('');
+  readonly capacityWarnings = signal<IrrigationProjectionItem[]>([]);
   readonly vm$ = this.runtime.vm$;
   readonly showFathersDayBanner = isGermanFathersDay();
+
+  constructor() {
+    this.loadCapacityWarnings();
+  }
 
   minutesFor(area: Zone): number {
     return this.manualMinutes()[area.id] ?? area.default_manual_duration_minutes;
@@ -218,11 +254,36 @@ export class DashboardComponent {
     });
   }
 
+  openPlanning(): void {
+    void this.router.navigate(['/planning']);
+  }
+
   openAreas(): void {
     void this.router.navigate(['/areas']);
   }
 
   isPaused(settings: AppSettings): boolean {
     return !!(settings.system_paused_until && new Date(settings.system_paused_until).getTime() > Date.now());
+  }
+
+  formatDateTime(value: string): string {
+    return new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
+  }
+
+  private loadCapacityWarnings(): void {
+    this.api.getIrrigationProjection(2)
+      .pipe(
+        catchError(() => of(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((projection) => {
+        this.capacityWarnings.set((projection?.items ?? []).filter(isAdaptiveCapacitySkip).slice(0, 5));
+      });
   }
 }
