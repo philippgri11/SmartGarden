@@ -240,6 +240,34 @@ Die Images werden per Commit-SHA referenziert:
 - `ghcr.io/philippgri11/smartgarden-backend:<commit-sha>`
 - `ghcr.io/philippgri11/smartgarden-frontend:<commit-sha>`
 
+## Release-Changelog per Mail
+
+Wenn ein Git-Tag im Format `v*` gepusht wird, erzeugt der Workflow `Release changelog mail` automatisch einen Changelog seit dem vorherigen Tag und verschickt ihn per SMTP.
+
+Die Erkennung wichtiger Aenderungen basiert auf Commit-Praefixen:
+
+- `security:` fuer Sicherheitsrelevantes
+- `BREAKING CHANGE:` oder `breaking:` fuer Umstellungen
+- `feat:` fuer neue Funktionen
+- `fix:` fuer Fehlerbehebungen
+- `perf:`, `docs:`, `test:`, `ci:`, `build:`, `refactor:` und `chore:` fuer weitere Gruppen
+
+Der Workflow benoetigt diese GitHub Secrets:
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM`
+- `CHANGELOG_RECIPIENTS`
+
+Ein Release kann so angekuendigt werden:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
 ## Datenbankmigrationen
 
 Migrationen laufen lokal und im Cluster ueber:
