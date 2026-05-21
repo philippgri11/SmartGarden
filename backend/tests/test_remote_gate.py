@@ -85,6 +85,21 @@ def test_remote_gate_blocks_run_all_by_default(monkeypatch):
     assert "Gesamtbewässerung" in response.json()["detail"]
 
 
+def test_remote_gate_allows_releasing_safety_stop(monkeypatch):
+    captured = {}
+
+    async def fake_forward(request, path, body, identity):
+        captured["path"] = path
+        return Response(content=b'{"message": "ok"}', media_type="application/json")
+
+    monkeypatch.setattr(remote_gate, "forward_request", fake_forward)
+    with _client(monkeypatch) as client:
+        response = client.post("/api/system/release-safety-stop", json={})
+
+    assert response.status_code == 200
+    assert captured["path"] == "/api/system/release-safety-stop"
+
+
 def test_remote_gate_requires_access_token_when_enforced(monkeypatch):
     monkeypatch.setattr(remote_gate.settings, "cloudflare_access_enforce", True)
     monkeypatch.setattr(remote_gate.settings, "cloudflare_access_team_domain", "example.cloudflareaccess.com")

@@ -98,3 +98,11 @@ def schedule_occurrences(schedule: orm.Schedule, *, start: datetime, days: int) 
         if scheduled_dt >= base:
             occurrences.append(scheduled_dt)
     return occurrences
+
+
+def fixed_schedule_occurrence_key(*, schedule_id: int, slot: datetime) -> str:
+    return f"static:{schedule_id}:{slot.date().isoformat()}:{slot.time().isoformat(timespec='seconds')}"
+
+
+def adaptive_occurrence_key(*, zone_id: int, slot: datetime) -> str:
+    return f"adaptive:{zone_id}:{slot.date().isoformat()}:{slot.time().isoformat(timespec='seconds')}"

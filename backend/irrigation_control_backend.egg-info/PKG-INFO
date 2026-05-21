@@ -7,6 +7,7 @@ Description-Content-Type: text/markdown
 Requires-Dist: alembic>=1.13.2
 Requires-Dist: fastapi>=0.115.0
 Requires-Dist: httpx>=0.27.0
+Requires-Dist: PyJWT[crypto]>=2.10.1
 Requires-Dist: psycopg[binary]>=3.2.1
 Requires-Dist: pydantic>=2.8.2
 Requires-Dist: pydantic-settings>=2.4.0
@@ -15,3 +16,4 @@ Requires-Dist: sqlalchemy>=2.0.32
 Requires-Dist: uvicorn[standard]>=0.30.6
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.2; extra == "dev"
+Requires-Dist: pytest-cov>=5.0.0; extra == "dev"
