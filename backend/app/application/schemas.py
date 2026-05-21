@@ -388,6 +388,7 @@ class SystemPodStatusResponse(BaseModel):
     restart_count: int
     node_name: str | None = None
     pod_ip: str | None = None
+    created_at: datetime | None = None
     started_at: datetime | None = None
     cpu_millicores: float | None = None
     memory_mebibytes: float | None = None
