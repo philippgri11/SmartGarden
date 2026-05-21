@@ -46,3 +46,26 @@ def test_format_changelog_groups_changes_in_release_order() -> None:
     assert "- security: tighten remote gate (ccc333)" in changelog
     assert "- feat: send changelog mails (bbb222)" in changelog
     assert "- fix: stop duplicate watering (aaa111)" in changelog
+
+
+def test_format_mail_body_prefers_human_release_notes(tmp_path: Path) -> None:
+    release_notes = tmp_path / "VERSION.md"
+    release_notes.write_text(
+        "# SmartGarden Version v1.1.0\n\n"
+        "Kurz gesagt: Die Bewaesserung ist leichter zu ueberwachen.\n\n"
+        "## Muss ich etwas tun?\n\n"
+        "- Nein.\n",
+        encoding="utf-8",
+    )
+
+    body = module.format_mail_body(
+        previous_tag="v1.0.0",
+        current_tag="v1.1.0",
+        commits=[module.Commit(sha="aaa111", subject="feat: hidden technical detail")],
+        compare_url="https://example.test/compare/v1.0.0...v1.1.0",
+        release_notes_path=str(release_notes),
+    )
+
+    assert "Kurz gesagt: Die Bewaesserung ist leichter zu ueberwachen." in body
+    assert "GitHub-Vergleich: https://example.test/compare/v1.0.0...v1.1.0" in body
+    assert "feat: hidden technical detail" not in body

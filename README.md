@@ -240,33 +240,27 @@ Die Images werden per Commit-SHA referenziert:
 - `ghcr.io/philippgri11/smartgarden-backend:<commit-sha>`
 - `ghcr.io/philippgri11/smartgarden-frontend:<commit-sha>`
 
-## Release-Changelog per Mail
+## Versionsmail fuer neue Aenderungen
 
-Wenn ein Git-Tag im Format `v*` gepusht wird, erzeugt der Workflow `Release changelog mail` automatisch einen Changelog seit dem vorherigen Tag und verschickt ihn per SMTP.
+Wenn eine neue Version fertig ist, soll die Mail nicht wie ein technisches Git-Protokoll aussehen. Deshalb gibt es `VERSION.md`.
 
-Die Erkennung wichtiger Aenderungen basiert auf Commit-Praefixen:
+So funktioniert es:
 
-- `security:` fuer Sicherheitsrelevantes
-- `BREAKING CHANGE:` oder `breaking:` fuer Umstellungen
-- `feat:` fuer neue Funktionen
-- `fix:` fuer Fehlerbehebungen
-- `perf:`, `docs:`, `test:`, `ci:`, `build:`, `refactor:` und `chore:` fuer weitere Gruppen
+1. `VERSION.md` in einfachen Worten aktualisieren.
+2. Aenderung committen und nach GitHub bringen.
+3. Eine Version markieren.
+4. GitHub Actions verschickt automatisch die Mail.
 
-Der Workflow benoetigt diese GitHub Secrets:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USERNAME`
-- `SMTP_PASSWORD`
-- `SMTP_FROM`
-- `CHANGELOG_RECIPIENTS`
-
-Ein Release kann so angekuendigt werden:
+Beispiel:
 
 ```bash
 git tag v1.2.0
 git push origin v1.2.0
 ```
+
+Die Mail wird an die Empfaenger aus dem GitHub Secret `CHANGELOG_RECIPIENTS` gesendet. Die SMTP-Zugangsdaten liegen ebenfalls als GitHub Secrets.
+
+Wenn `VERSION.md` leer oder nicht vorhanden waere, faellt das Script auf eine technische Liste der Git-Commits zurueck. Normalerweise soll aber `VERSION.md` gepflegt werden.
 
 ## Datenbankmigrationen
 
