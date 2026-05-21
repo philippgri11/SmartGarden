@@ -8,6 +8,7 @@ import smtplib
 import subprocess
 from dataclasses import dataclass
 from email.message import EmailMessage
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,43 @@ def format_changelog(previous_tag: str, current_tag: str, commits: list[Commit],
     return "\n".join(lines)
 
 
+def load_release_notes(path: str | None) -> str | None:
+    if not path:
+        return None
+    release_notes = Path(path)
+    if not release_notes.exists():
+        raise FileNotFoundError(f"Release notes file not found: {path}")
+    content = release_notes.read_text(encoding="utf-8").strip()
+    return content or None
+
+
+def format_mail_body(
+    *,
+    previous_tag: str,
+    current_tag: str,
+    commits: list[Commit],
+    compare_url: str | None,
+    release_notes_path: str | None,
+) -> str:
+    release_notes = load_release_notes(release_notes_path)
+    if release_notes:
+        lines = [
+            release_notes,
+            "",
+            "---",
+            "",
+            f"Technische Einordnung: {previous_tag} .. {current_tag}",
+        ]
+        if compare_url:
+            lines.append(f"GitHub-Vergleich: {compare_url}")
+        lines.extend([
+            "",
+            "Diese Mail wurde automatisch verschickt, nachdem die Version als Git-Tag markiert wurde.",
+        ])
+        return "\n".join(lines)
+    return format_changelog(previous_tag, current_tag, commits, compare_url)
+
+
 def recipients_from_env() -> list[str]:
     raw = os.environ.get("CHANGELOG_RECIPIENTS") or os.environ.get("WATCHDOG_ALERT_RECIPIENTS") or ""
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -125,12 +163,19 @@ def main() -> None:
     parser.add_argument("--previous-tag", required=True)
     parser.add_argument("--current-tag", required=True)
     parser.add_argument("--compare-url")
+    parser.add_argument("--release-notes", default="VERSION.md")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     commits = list_commits(args.previous_tag, args.current_tag)
-    body = format_changelog(args.previous_tag, args.current_tag, commits, args.compare_url)
-    subject = f"[SmartGarden Release] {args.current_tag}"
+    body = format_mail_body(
+        previous_tag=args.previous_tag,
+        current_tag=args.current_tag,
+        commits=commits,
+        compare_url=args.compare_url,
+        release_notes_path=args.release_notes,
+    )
+    subject = f"[SmartGarden] Neue Version {args.current_tag}"
 
     if args.dry_run:
         print(subject)
