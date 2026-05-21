@@ -69,3 +69,30 @@ def test_format_mail_body_prefers_human_release_notes(tmp_path: Path) -> None:
     assert "Kurz gesagt: Die Bewaesserung ist leichter zu ueberwachen." in body
     assert "GitHub-Vergleich: https://example.test/compare/v1.0.0...v1.1.0" in body
     assert "feat: hidden technical detail" not in body
+
+
+def test_markdown_to_html_formats_release_notes() -> None:
+    html = module.markdown_to_html(
+        "# SmartGarden Version v1.1.0\n\n"
+        "Kurz gesagt: `VERSION.md` wird als Mail formatiert.\n\n"
+        "## Was ist neu?\n\n"
+        "- Schoene Mail\n"
+        "- Link zur [Version](https://example.test/version)\n\n"
+        "---\n\n"
+        "Automatisch verschickt."
+    )
+
+    assert "<h1>SmartGarden Version v1.1.0</h1>" in html
+    assert "<h2>Was ist neu?</h2>" in html
+    assert "<li>Schoene Mail</li>" in html
+    assert '<a href="https://example.test/version">Version</a>' in html
+    assert "<code>VERSION.md</code>" in html
+    assert "<hr>" in html
+
+
+def test_markdown_to_html_escapes_unsafe_html() -> None:
+    html = module.markdown_to_html("# <script>alert(1)</script>\n\n- <b>nicht roh</b>")
+
+    assert "<script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "&lt;b&gt;nicht roh&lt;/b&gt;" in html
