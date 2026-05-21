@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import os
 import re
 import smtplib
@@ -130,6 +131,124 @@ def format_mail_body(
     return format_changelog(previous_tag, current_tag, commits, compare_url)
 
 
+def inline_markdown_to_html(text: str) -> str:
+    escaped = html.escape(text)
+    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+    escaped = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r'<a href="\2">\1</a>', escaped)
+    return escaped
+
+
+def markdown_to_html(markdown: str) -> str:
+    body: list[str] = []
+    in_list = False
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            body.append("</ul>")
+            in_list = False
+
+    for raw_line in markdown.splitlines():
+        line = raw_line.strip()
+        if not line:
+            close_list()
+            continue
+        if line == "---":
+            close_list()
+            body.append("<hr>")
+            continue
+        if line.startswith("# "):
+            close_list()
+            body.append(f"<h1>{inline_markdown_to_html(line[2:].strip())}</h1>")
+            continue
+        if line.startswith("## "):
+            close_list()
+            body.append(f"<h2>{inline_markdown_to_html(line[3:].strip())}</h2>")
+            continue
+        if line.startswith("### "):
+            close_list()
+            body.append(f"<h3>{inline_markdown_to_html(line[4:].strip())}</h3>")
+            continue
+        if line.startswith("- "):
+            if not in_list:
+                body.append("<ul>")
+                in_list = True
+            body.append(f"<li>{inline_markdown_to_html(line[2:].strip())}</li>")
+            continue
+        close_list()
+        body.append(f"<p>{inline_markdown_to_html(line)}</p>")
+    close_list()
+
+    content = "\n".join(body)
+    return f"""<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body {{
+        margin: 0;
+        padding: 24px;
+        background: #f6faf3;
+        color: #1d2b20;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }}
+      .mail {{
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 28px;
+        border: 1px solid #dce8d6;
+        border-radius: 12px;
+        background: #ffffff;
+      }}
+      h1 {{
+        margin: 0 0 14px;
+        color: #164f34;
+        font-size: 26px;
+        line-height: 1.2;
+      }}
+      h2 {{
+        margin: 26px 0 10px;
+        color: #1f7a4d;
+        font-size: 18px;
+      }}
+      h3 {{
+        margin: 22px 0 8px;
+        font-size: 16px;
+      }}
+      p {{
+        margin: 0 0 14px;
+      }}
+      ul {{
+        margin: 0 0 16px;
+        padding-left: 22px;
+      }}
+      li {{
+        margin: 7px 0;
+      }}
+      code {{
+        padding: 2px 5px;
+        border-radius: 5px;
+        background: #eef5ea;
+      }}
+      a {{
+        color: #1f7a4d;
+      }}
+      hr {{
+        margin: 28px 0;
+        border: 0;
+        border-top: 1px solid #dce8d6;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="mail">
+      {content}
+    </div>
+  </body>
+</html>"""
+
+
 def recipients_from_env() -> list[str]:
     raw = os.environ.get("CHANGELOG_RECIPIENTS") or os.environ.get("WATCHDOG_ALERT_RECIPIENTS") or ""
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -150,6 +269,7 @@ def send_mail(subject: str, body: str) -> None:
     email["To"] = ", ".join(recipients)
     email["Subject"] = subject
     email.set_content(body)
+    email.add_alternative(markdown_to_html(body), subtype="html")
 
     with smtplib.SMTP(host, port, timeout=20) as smtp:
         smtp.starttls()
