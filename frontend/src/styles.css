@@ -967,6 +967,57 @@ app-expert-section {
   color: var(--danger);
 }
 
+.notice.warning {
+  background: rgba(212, 141, 63, 0.16);
+  color: #965d20;
+}
+
+.capacity-warning-panel {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  border-color: rgba(171, 69, 52, 0.34);
+  background: linear-gradient(135deg, rgba(171, 69, 52, 0.16), rgba(255, 255, 255, 0.96));
+}
+
+.capacity-warning-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(171, 69, 52, 0.16);
+  color: var(--danger);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.warning-kicker {
+  margin: 0 0 4px;
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.capacity-warning-panel h3 {
+  margin: 0 0 8px;
+}
+
+.capacity-warning-panel p {
+  margin: 0;
+  color: var(--text);
+}
+
+.capacity-warning-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 18px;
+  padding-left: 22px;
+}
+
 .system-status-card {
   display: grid;
   gap: 18px;
@@ -1729,6 +1780,17 @@ app-expert-section {
   .system-status-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+
+  .capacity-warning-panel {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .capacity-warning-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 1.5rem;
   }
 
   .system-fact-water {

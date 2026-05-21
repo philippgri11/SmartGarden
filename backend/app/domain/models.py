@@ -10,6 +10,12 @@ class TriggerType(StrEnum):
     SCHEDULED = "scheduled"
 
 
+class RunSource(StrEnum):
+    MANUAL = "manual"
+    STATIC_SCHEDULE = "static_schedule"
+    ADAPTIVE_RULE = "adaptive_rule"
+
+
 class RunStatus(StrEnum):
     PLANNED = "planned"
     RUNNING = "running"
@@ -32,4 +38,3 @@ class DueScheduleOccurrence:
     scheduled_for: date
     run_at: time
     duration_minutes: int
-

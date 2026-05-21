@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time as time_module
-from datetime import UTC, datetime, time as datetime_time
+from datetime import UTC, datetime, time as datetime_time, timedelta
 
 from sqlalchemy import text
 
@@ -13,9 +13,9 @@ from app.application.irrigation_projection_service import IrrigationProjectionSe
 from app.application.schemas import AdaptiveIrrigationPlan, ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import get_settings
-from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan, expand_time_windows, WINDOW_STARTS
-from app.domain.models import RunStatus, TriggerType
-from app.domain.services import current_schedule_slot
+from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX, decide_adaptive_plan, expand_time_windows, fits_adaptive_window, WINDOW_STARTS
+from app.domain.models import RunSource, RunStatus, TriggerType
+from app.domain.services import adaptive_occurrence_key, current_schedule_slot, fixed_schedule_occurrence_key
 from app.domain.timezone import now_in_app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts
 from app.infrastructure.db import orm
@@ -64,11 +64,15 @@ class SchedulerRunner:
             return
         schedules = ScheduleRepository(session).list_active()
         runs = WateringRunRepository(session)
+        planned_in_tick: list[tuple[int, datetime, int]] = []
         for schedule in schedules:
             slot = current_schedule_slot(schedule, schedule_now, self.settings.scheduler_due_grace_minutes)
             if not slot:
                 continue
             if runs.exists_schedule_slot(schedule.id, slot.date(), slot.time()):
+                continue
+            occurrence_key = fixed_schedule_occurrence_key(schedule_id=schedule.id, slot=slot)
+            if runs.exists_occurrence_key(occurrence_key):
                 continue
             zone = session.get(orm.Zone, schedule.zone_id)
             if not zone or not zone.active:
@@ -81,6 +85,8 @@ class SchedulerRunner:
                     zone_id=schedule.zone_id,
                     schedule_id=schedule.id,
                     trigger_type=TriggerType.SCHEDULED,
+                    source_type=RunSource.STATIC_SCHEDULE,
+                    occurrence_key=occurrence_key,
                     duration_minutes=schedule.duration_minutes,
                     scheduled_for=slot.date(),
                     scheduled_time=slot.time(),
@@ -94,19 +100,32 @@ class SchedulerRunner:
                 zone_id=schedule.zone_id,
                 schedule_id=schedule.id,
                 trigger_type=TriggerType.SCHEDULED,
+                source_type=RunSource.STATIC_SCHEDULE,
+                occurrence_key=occurrence_key,
                 duration_minutes=schedule.duration_minutes,
                 scheduled_for=slot.date(),
                 scheduled_time=slot.time(),
                 reason="planned by scheduler",
             )
-        self._plan_adaptive_runs(session, app_settings=app_settings, watering=watering, runs=runs, now=schedule_now)
+            planned_in_tick.append((schedule.zone_id, slot, schedule.duration_minutes))
+        self._plan_adaptive_runs(session, app_settings=app_settings, watering=watering, runs=runs, now=schedule_now, planned_in_tick=planned_in_tick)
         session.commit()
 
-    def _plan_adaptive_runs(self, session, *, app_settings, watering: WateringService, runs: WateringRunRepository, now: datetime) -> None:
+    def _plan_adaptive_runs(
+        self,
+        session,
+        *,
+        app_settings,
+        watering: WateringService,
+        runs: WateringRunRepository,
+        now: datetime,
+        planned_in_tick: list[tuple[int, datetime, int]] | None = None,
+    ) -> None:
         weather_service = WeatherService(session, self.settings)
         weather_summary = weather_service.try_fetch_current_summary(app_settings=app_settings) if app_settings.weather_enabled else None
         active_sequence = watering.active_manual_sequence_window()
         zones = ZoneRepository(session).list()
+        planned_in_tick = planned_in_tick if planned_in_tick is not None else []
         for zone in zones:
             if not zone.active or zone.scheduling_mode != "adaptive" or not zone.adaptive_irrigation_plan_json or not zone.irrigation_profile_json:
                 continue
@@ -129,6 +148,9 @@ class SchedulerRunner:
             )
             if not decision.scheduled_at:
                 continue
+            occurrence_key = adaptive_occurrence_key(zone_id=zone.id, slot=decision.scheduled_at)
+            if runs.exists_occurrence_key(occurrence_key):
+                continue
             if self._adaptive_window_exists(session, zone_id=zone.id, plan=plan, slot=decision.scheduled_at):
                 continue
             if active_sequence and decision.scheduled_at <= active_sequence[1]:
@@ -136,6 +158,8 @@ class SchedulerRunner:
                     zone_id=zone.id,
                     schedule_id=None,
                     trigger_type=TriggerType.SCHEDULED,
+                    source_type=RunSource.ADAPTIVE_RULE,
+                    occurrence_key=occurrence_key,
                     duration_minutes=max(1, plan.baseDurationMinutes),
                     scheduled_for=decision.scheduled_at.date(),
                     scheduled_time=decision.scheduled_at.time(),
@@ -150,6 +174,8 @@ class SchedulerRunner:
                     zone_id=zone.id,
                     schedule_id=None,
                     trigger_type=TriggerType.SCHEDULED,
+                    source_type=RunSource.ADAPTIVE_RULE,
+                    occurrence_key=occurrence_key,
                     duration_minutes=max(1, plan.baseDurationMinutes),
                     scheduled_for=decision.scheduled_at.date(),
                     scheduled_time=decision.scheduled_at.time(),
@@ -158,20 +184,76 @@ class SchedulerRunner:
                 )
                 skipped_run.finished_at = now
                 continue
-            planned_start = IrrigationProjectionService(session, self.settings).next_available_start(
+            planned_start = self._next_available_start(
+                session,
                 candidate_start=decision.scheduled_at,
                 duration_minutes=decision.duration_minutes,
                 zone_id=zone.id,
+                planned_in_tick=planned_in_tick,
             )
+            if not fits_adaptive_window(plan, slot=decision.scheduled_at, start=planned_start, duration_minutes=decision.duration_minutes):
+                skipped_run = runs.create_planned_run(
+                    zone_id=zone.id,
+                    schedule_id=None,
+                    trigger_type=TriggerType.SCHEDULED,
+                    source_type=RunSource.ADAPTIVE_RULE,
+                    occurrence_key=occurrence_key,
+                    duration_minutes=decision.duration_minutes,
+                    scheduled_for=planned_start.date(),
+                    scheduled_time=planned_start.time(),
+                    status=RunStatus.SKIPPED,
+                    reason=(
+                        f"{ADAPTIVE_REASON_PREFIX} Das freigegebene Zeitfenster reicht nach vorherigen Laeufen "
+                        "nicht mehr aus. Der Lauf wird nicht automatisch in ein ungeeignetes Zeitfenster verschoben."
+                    ),
+                )
+                skipped_run.finished_at = now
+                continue
             runs.create_planned_run(
                 zone_id=zone.id,
                 schedule_id=None,
                 trigger_type=TriggerType.SCHEDULED,
+                source_type=RunSource.ADAPTIVE_RULE,
+                occurrence_key=occurrence_key,
                 duration_minutes=decision.duration_minutes,
                 scheduled_for=planned_start.date(),
                 scheduled_time=planned_start.time(),
                 reason=f"{ADAPTIVE_REASON_PREFIX} {decision.reason}",
             )
+            planned_in_tick.append((zone.id, planned_start, decision.duration_minutes))
+
+    def _next_available_start(
+        self,
+        session,
+        *,
+        candidate_start: datetime,
+        duration_minutes: int,
+        zone_id: int,
+        planned_in_tick: list[tuple[int, datetime, int]],
+    ) -> datetime:
+        blocked_intervals: list[tuple[datetime, datetime]] = []
+        seen: set[tuple[int, datetime, int]] = set()
+        for run in IrrigationProjectionService(session, self.settings)._planned_runs_on_day(candidate_start):
+            if run.zone_id == zone_id:
+                continue
+            start = datetime.combine(run.scheduled_for, run.scheduled_time, tzinfo=candidate_start.tzinfo)
+            seen.add((run.zone_id, start, run.requested_duration_minutes))
+            blocked_intervals.append((start, start + timedelta(minutes=run.requested_duration_minutes)))
+        for planned_zone_id, planned_start, planned_duration in planned_in_tick:
+            if planned_zone_id == zone_id or planned_start.date() != candidate_start.date():
+                continue
+            key = (planned_zone_id, planned_start, planned_duration)
+            if key in seen:
+                continue
+            seen.add(key)
+            blocked_intervals.append((planned_start, planned_start + timedelta(minutes=planned_duration)))
+
+        planned_start = candidate_start
+        for blocked_start, blocked_end in sorted(blocked_intervals, key=lambda item: item[0]):
+            planned_end = planned_start + timedelta(minutes=duration_minutes)
+            if planned_start < blocked_end and planned_end > blocked_start:
+                planned_start = blocked_end
+        return planned_start
 
     def _adaptive_window_exists(self, session, *, zone_id: int, plan: AdaptiveIrrigationPlan, slot: datetime) -> bool:
         window_end = self._adaptive_window_end(plan=plan, slot=slot)
@@ -179,18 +261,18 @@ class SchedulerRunner:
             session.query(orm.WateringRun.id)
             .filter(
                 orm.WateringRun.zone_id == zone_id,
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.scheduled_for == slot.date(),
                 orm.WateringRun.scheduled_time >= slot.time(),
                 orm.WateringRun.scheduled_time < window_end.time(),
-                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
                 orm.WateringRun.status.in_(
                     [
                         RunStatus.PLANNED.value,
                         RunStatus.RUNNING.value,
                         RunStatus.COMPLETED.value,
                         RunStatus.SKIPPED.value,
+                        RunStatus.CANCELLED.value,
+                        RunStatus.FAILED.value,
                     ]
                 ),
             )
@@ -214,9 +296,7 @@ class SchedulerRunner:
             session.query(orm.WateringRun)
             .filter(
                 orm.WateringRun.zone_id == zone_id,
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
-                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.status.in_([RunStatus.COMPLETED.value, RunStatus.RUNNING.value]),
             )
             .order_by(orm.WateringRun.created_at.desc())
@@ -229,10 +309,8 @@ class SchedulerRunner:
             session.query(orm.WateringRun.id)
             .filter(
                 orm.WateringRun.zone_id == zone_id,
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.scheduled_for == now.date(),
-                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
                 orm.WateringRun.status.in_([RunStatus.PLANNED.value, RunStatus.RUNNING.value, RunStatus.COMPLETED.value]),
             )
             .first()

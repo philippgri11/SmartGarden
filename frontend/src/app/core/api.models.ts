@@ -220,6 +220,8 @@ export interface WateringRun {
   duration_seconds?: number | null;
   stop_requested: boolean;
   reason?: string | null;
+  planning_reason?: string | null;
+  execution_reason?: string | null;
   created_at: string;
   weather_decisions: WeatherDecision[];
 }

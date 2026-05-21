@@ -117,6 +117,8 @@ def list_runs(db: Session = Depends(get_db), app_settings: Settings = Depends(ge
             "zone_id": run.zone_id,
             "schedule_id": run.schedule_id,
             "trigger_type": run.trigger_type,
+            "source_type": run.source_type,
+            "occurrence_key": run.occurrence_key,
             "status": run.status,
             "scheduled_for": f"{run.scheduled_for}T{run.scheduled_time}" if run.scheduled_for and run.scheduled_time else None,
             "requested_duration_minutes": run.requested_duration_minutes,
@@ -127,6 +129,8 @@ def list_runs(db: Session = Depends(get_db), app_settings: Settings = Depends(ge
             "duration_seconds": run.duration_seconds,
             "stop_requested": run.stop_requested,
             "reason": run.reason,
+            "planning_reason": run.planning_reason,
+            "execution_reason": run.execution_reason,
             "created_at": run.created_at,
             "weather_decisions": [
                 {

@@ -13,8 +13,8 @@ from app.application.schemas import (
 )
 from app.application.weather_service import WeatherService
 from app.config import Settings
-from app.domain.adaptive_irrigation import expand_time_windows, WINDOW_STARTS, decide_adaptive_plan
-from app.domain.models import RunStatus, TriggerType
+from app.domain.adaptive_irrigation import adaptive_window_bounds, expand_time_windows, WINDOW_STARTS, decide_adaptive_plan
+from app.domain.models import RunSource, RunStatus, TriggerType
 from app.domain.services import schedule_occurrences
 from app.domain.timezone import app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts
@@ -36,6 +36,8 @@ class _Candidate:
     decision_summary: str | None = None
     decision_details: list[str] | None = None
     weather_basis: dict | None = None
+    window_start: datetime | None = None
+    window_end: datetime | None = None
 
 
 class IrrigationProjectionService:
@@ -78,7 +80,7 @@ class IrrigationProjectionService:
                 _Candidate(
                     zone_id=run.zone_id,
                     zone_name="",
-                    source="manual_rule" if run.schedule_id else "adaptive_rule",
+                    source="manual_rule" if run.source_type == RunSource.STATIC_SCHEDULE.value or run.schedule_id else "adaptive_rule",
                     original_start=start,
                     duration_minutes=run.requested_duration_minutes,
                     reason=run.reason or "",
@@ -165,6 +167,7 @@ class IrrigationProjectionService:
                     continue
                 status = "planned" if decision.should_plan else "skipped"
                 duration = decision.duration_minutes if decision.should_plan else max(1, plan.baseDurationMinutes)
+                bounds = adaptive_window_bounds(plan, slot=decision.scheduled_at)
                 candidates.append(
                     _Candidate(
                         zone_id=zone.id,
@@ -185,6 +188,8 @@ class IrrigationProjectionService:
                             recommendation=decision.recommendation,
                             already_watered_today=already_watered_today,
                         ),
+                        window_start=bounds[0] if bounds else None,
+                        window_end=bounds[1] if bounds else None,
                     )
                 )
                 if decision.should_plan:
@@ -204,7 +209,23 @@ class IrrigationProjectionService:
             if candidate.status == "planned" and last_planned_end and planned_start < last_planned_end:
                 planned_start = last_planned_end
             planned_end = planned_start + timedelta(minutes=candidate.duration_minutes)
-            if candidate.status == "planned":
+            status = candidate.status
+            reason = candidate.reason
+            decision_summary = candidate.decision_summary
+            if (
+                status == "planned"
+                and candidate.source == "adaptive_rule"
+                and candidate.window_start is not None
+                and candidate.window_end is not None
+                and (planned_start < candidate.window_start or planned_end > candidate.window_end)
+            ):
+                status = "skipped"
+                reason = (
+                    "Das freigegebene Zeitfenster reicht nach vorherigen Laeufen nicht mehr aus. "
+                    "Der Lauf wird nicht automatisch in ein ungeeignetes Zeitfenster verschoben."
+                )
+                decision_summary = "Ausgesetzt, weil das erlaubte adaptive Zeitfenster rechnerisch voll ist."
+            if status == "planned":
                 last_planned_end = planned_end
             items.append(
                 IrrigationProjectionItem(
@@ -212,14 +233,14 @@ class IrrigationProjectionService:
                     zone_name=candidate.zone_name,
                     schedule_id=candidate.schedule_id,
                     source=candidate.source,  # type: ignore[arg-type]
-                    status=candidate.status,  # type: ignore[arg-type]
+                    status=status,  # type: ignore[arg-type]
                     planned_start=planned_start,
                     planned_end=planned_end,
                     original_start=candidate.original_start,
                     duration_minutes=candidate.duration_minutes,
-                    reason=candidate.reason,
+                    reason=reason,
                     weather_summary=candidate.weather_summary,
-                    decision_summary=candidate.decision_summary,
+                    decision_summary=decision_summary,
                     decision_details=candidate.decision_details or [],
                     weather_basis=candidate.weather_basis,
                     adjusted_for_sequence=planned_start != candidate.original_start,
@@ -257,9 +278,7 @@ class IrrigationProjectionService:
             self.session.query(orm.WateringRun)
             .filter(
                 orm.WateringRun.zone_id == zone_id,
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
-                orm.WateringRun.reason.like("adaptive irrigation:%"),
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.status.in_([RunStatus.COMPLETED.value, RunStatus.RUNNING.value]),
             )
             .order_by(orm.WateringRun.created_at.desc())
@@ -272,10 +291,8 @@ class IrrigationProjectionService:
             self.session.query(orm.WateringRun.id)
             .filter(
                 orm.WateringRun.zone_id == zone_id,
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.scheduled_for == day,
-                orm.WateringRun.reason.like("adaptive irrigation:%"),
                 orm.WateringRun.status.in_([RunStatus.PLANNED.value, RunStatus.RUNNING.value, RunStatus.COMPLETED.value]),
             )
             .first()

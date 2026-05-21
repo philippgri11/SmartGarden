@@ -55,7 +55,7 @@ class SystemService:
             running = self.runs.list_running()
             for run in running:
                 run.stop_requested = True
-                run.reason = "winter mode activated"
+                run.execution_reason = "winter mode activated"
         self.session.commit()
         self.session.refresh(entity)
         return entity

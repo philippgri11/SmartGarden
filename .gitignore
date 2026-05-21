@@ -6,6 +6,10 @@ dist
 __pycache__
 .pytest_cache
 *.pyc
+.coverage
+coverage/
+htmlcov/
+coverage.xml
 dist-images
 
 

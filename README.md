@@ -1,6 +1,15 @@
 # SmartGarden
 
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=YOUR_BUTTON_ID)
+[![CI](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml/badge.svg)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
+[![Backend coverage](https://img.shields.io/badge/Backend%20Coverage-75%25-1f7a4d?logo=pytest&logoColor=white)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
+[![Frontend coverage](https://img.shields.io/badge/Frontend%20Coverage-21.21%25-d48d3f?logo=vitest&logoColor=white)](https://github.com/philippgri11/SmartGarden/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1f7a4d.svg)](LICENSE)
+[![Frontend: Angular](https://img.shields.io/badge/Frontend-Angular-DD0031?logo=angular&logoColor=white)](frontend)
+[![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](backend)
+[![Docker](https://img.shields.io/badge/Images-Docker-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![Kubernetes](https://img.shields.io/badge/Deploy-Kubernetes-326CE5?logo=kubernetes&logoColor=white)](k8s)
+[![Raspberry Pi](https://img.shields.io/badge/Target-Raspberry%20Pi-C51A4A?logo=raspberrypi&logoColor=white)](README.md#raspberry-pi-und-echte-hardware)
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/phGrill)
 
 SmartGarden ist eine offene Bewaesserungssteuerung fuer DIY-Home-Projekte: Raspberry Pi, Relais, Ventile, Wetterdaten, Web-Dashboard und eine interaktive Gartenkarte in einem sauber strukturierten Stack.
 
@@ -16,6 +25,7 @@ Das Projekt ist fuer Menschen gedacht, die ihre Terrasse, Hochbeete, Balkonpflan
 - PostgreSQL-Persistenz fuer Zonen, Laeufe, Wetterentscheidungen und Systemstatus
 - Klare Trennung zwischen API, Scheduler, Frontend, Datenbank und Hardwareadapter
 - Sicherheitslogik mit Maximaldauer, Stop-All-Endpunkt und kontrolliertem Scheduler
+- CI mit Backend-Coverage 75% und Frontend-Coverage 21.21% als GitHub-Actions-Reports
 
 ## Warum fuer DIY-Home-Projekte?
 
@@ -285,9 +295,7 @@ SmartGarden ist free to use und steht unter der MIT-Lizenz. Du darfst es nutzen,
 
 Wenn dir das Projekt Zeit spart oder deinen Garten ein bisschen smarter macht, kannst du freiwillig einen Kaffee, ein Bauteil oder die naechste Testhardware spendieren:
 
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=YOUR_BUTTON_ID)
-
-Ersetze `YOUR_BUTTON_ID` durch die Button-ID deines PayPal-Donate-Buttons.
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/phGrill)
 
 ## Lizenz
 

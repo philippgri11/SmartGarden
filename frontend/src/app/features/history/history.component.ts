@@ -57,7 +57,8 @@ interface HistoryRunView {
           <div class="timeline-meta">
             <span>{{ eventTimestamp(item.run) | date: 'short' }}</span>
             <span>Auslöser: {{ item.run.trigger_type === 'manual' ? 'Manuell' : 'Automatisch' }}</span>
-            <span *ngIf="displayReason(item.run)">Erklärung: {{ displayReason(item.run) }}</span>
+            <span *ngIf="planningReason(item.run)">Plan: {{ planningReason(item.run) }}</span>
+            <span *ngIf="executionReason(item.run)">Ausführung: {{ executionReason(item.run) }}</span>
             <span *ngIf="item.repeatCount > 1">{{ item.repeatCount }} identische Stop-Ereignisse zusammengefasst.</span>
           </div>
           <app-expert-section [enabled]="expertMode()" title="Wetteranalyse" *ngIf="weatherDecisionFor(item.run) as weatherDecision">
@@ -131,7 +132,7 @@ export class HistoryComponent {
     }
     if (run.status === 'skipped') {
       const weatherDecision = this.weatherDecisionFor(run);
-      if (run.reason?.includes('Gesamtbewässerung')) {
+      if (this.reasonText(run).includes('Gesamtbewässerung')) {
         return `${zone} wurde einmalig wegen manueller Gesamtbewässerung übersprungen.`;
       }
       if (weatherDecision?.decision === 'skip') {
@@ -194,7 +195,7 @@ export class HistoryComponent {
     if (decision?.decision === 'skip' || decision?.decision === 'error') {
       return true;
     }
-    const reason = `${run.reason ?? ''} ${decision?.reason ?? ''} ${decision?.reason_human ?? ''}`.toLowerCase();
+    const reason = `${this.reasonText(run)} ${decision?.reason ?? ''} ${decision?.reason_human ?? ''}`.toLowerCase();
     return reason.includes('wetter') || reason.includes('regen') || reason.includes('adaptive irrigation');
   }
 
@@ -222,8 +223,16 @@ export class HistoryComponent {
     return `${probability} · ${precipitation}`;
   }
 
-  displayReason(run: WateringRun): string | null {
-    return this.weatherDecisionFor(run)?.reason_human ?? run.reason ?? null;
+  planningReason(run: WateringRun): string | null {
+    return run.planning_reason ?? run.reason ?? null;
+  }
+
+  executionReason(run: WateringRun): string | null {
+    return run.execution_reason ?? this.weatherDecisionFor(run)?.reason_human ?? null;
+  }
+
+  private reasonText(run: WateringRun): string {
+    return [run.planning_reason, run.execution_reason, run.reason].filter(Boolean).join(' ');
   }
 
   private duplicateStopKey(run: WateringRun): string | null {
@@ -233,7 +242,7 @@ export class HistoryComponent {
     return [
       run.zone_id,
       run.trigger_type,
-      run.reason ?? '',
+      run.execution_reason ?? run.reason ?? '',
       run.finished_at,
       run.scheduled_for ?? '',
       run.requested_duration_minutes,

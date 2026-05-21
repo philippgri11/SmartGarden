@@ -12,7 +12,7 @@ from app.application.schemas import ZoneIrrigationProfile
 from app.application.weather_service import WeatherService
 from app.config import Settings
 from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX
-from app.domain.models import RunStatus, TriggerType, WeatherDecisionKind
+from app.domain.models import RunSource, RunStatus, TriggerType, WeatherDecisionKind
 from app.domain.policies import enforce_max_duration, should_finish_run
 from app.domain.timezone import app_timezone
 from app.domain.zone_irrigation import ZoneWeatherFacts, build_zone_irrigation_recommendation
@@ -44,6 +44,7 @@ class WateringService:
             zone_id=zone_id,
             schedule_id=None,
             trigger_type=TriggerType.MANUAL,
+            source_type=RunSource.MANUAL,
             duration_minutes=enforce_max_duration(duration_minutes, zone.max_duration_minutes),
             reason=reason,
         )
@@ -73,6 +74,7 @@ class WateringService:
                 zone_id=zone.id,
                 schedule_id=None,
                 trigger_type=TriggerType.MANUAL,
+                source_type=RunSource.MANUAL,
                 duration_minutes=duration,
                 reason="manual run-all sequence",
                 sequence_group_id=sequence_group_id,
@@ -100,7 +102,7 @@ class WateringService:
         now = datetime.now(UTC)
         for run in runs_to_stop:
             run.stop_requested = True
-            run.reason = "stop requested via api"
+            run.execution_reason = "stop requested via api"
             if run.status == RunStatus.PLANNED.value:
                 run.status = RunStatus.CANCELLED.value
                 run.finished_at = now
@@ -117,7 +119,7 @@ class WateringService:
         now = datetime.now(UTC)
         for run in runs_to_stop:
             run.stop_requested = True
-            run.reason = "emergency stop requested via api"
+            run.execution_reason = "emergency stop requested via api"
             if run.status == RunStatus.PLANNED.value:
                 run.status = RunStatus.CANCELLED.value
                 run.finished_at = now
@@ -143,7 +145,7 @@ class WateringService:
             if not zone:
                 run.status = RunStatus.FAILED.value
                 run.finished_at = now
-                run.reason = "zone missing"
+                run.execution_reason = "zone missing"
                 continue
             if not run.started_at:
                 run.started_at = now
@@ -204,7 +206,7 @@ class WateringService:
             zone = self.zones.get(run.zone_id)
             if not zone or not zone.active:
                 run.status = RunStatus.SKIPPED.value
-                run.reason = "zone inactive or missing"
+                run.execution_reason = "zone inactive or missing"
                 run.finished_at = now
                 continue
             if currently_running_zone_ids or len(currently_running_zone_ids) >= self.settings.max_global_concurrent_runs:
@@ -364,7 +366,8 @@ class WateringService:
             if scheduled_at <= sequence_window_end:
                 run.status = RunStatus.SKIPPED.value
                 run.finished_at = now
-                run.reason = "Einmalig wegen manueller Gesamtbewässerung übersprungen."
+                run.execution_reason = "Einmalig wegen manueller Gesamtbewässerung übersprungen."
+                run.reason = run.reason or run.execution_reason
                 run.sequence_group_id = sequence_group_id
                 skipped_count += 1
         return skipped_count
@@ -374,17 +377,19 @@ class WateringService:
         if not zone:
             run.status = RunStatus.FAILED.value
             run.finished_at = datetime.now(UTC)
-            run.reason = "zone missing"
+            run.execution_reason = "zone missing"
             return False
         if run.trigger_type == TriggerType.MANUAL.value:
             self.gpio.activate_zone(zone)
             self.gpio_state.record_state(zone_id=zone.id, state=True, source="scheduler", reason="manual watering run started")
             run.status = RunStatus.RUNNING.value
             run.started_at = datetime.now(UTC)
-            run.reason = run.reason or "Manueller Start: Laufzeit wurde unverändert vom Benutzer übernommen."
+            run.planning_reason = run.planning_reason or run.reason or "Manueller Start: Laufzeit wurde unverändert vom Benutzer übernommen."
+            run.reason = run.reason or run.planning_reason
+            run.execution_reason = "manual watering run started"
             return True
         schedule = self.session.get(orm.Schedule, run.schedule_id) if run.schedule_id else None
-        is_adaptive_run = bool(run.reason and run.reason.startswith(ADAPTIVE_REASON_PREFIX))
+        is_adaptive_run = self._is_adaptive_run(run)
         weather_result, summary, app_settings = self.weather.evaluate(zone=zone, schedule=schedule)
         recommendation = None
         if summary and zone.irrigation_profile_json:
@@ -436,7 +441,7 @@ class WateringService:
         if weather_result.decision in {WeatherDecisionKind.SKIP, WeatherDecisionKind.ERROR}:
             run.status = RunStatus.SKIPPED.value if weather_result.decision == WeatherDecisionKind.SKIP else RunStatus.FAILED.value
             run.finished_at = datetime.now(UTC)
-            run.reason = weather_result.reason
+            run.execution_reason = weather_result.reason
             return False
         if recommendation is not None and not is_adaptive_run:
             run.requested_duration_minutes = recommendation.adjusted_duration_minutes
@@ -444,8 +449,19 @@ class WateringService:
         self.gpio_state.record_state(zone_id=zone.id, state=True, source="scheduler", reason="watering run started")
         run.status = RunStatus.RUNNING.value
         run.started_at = datetime.now(UTC)
-        run.reason = weather_result.reason
+        run.execution_reason = weather_result.reason
         return True
+
+    @staticmethod
+    def _is_adaptive_run(run: orm.WateringRun) -> bool:
+        if run.source_type == RunSource.ADAPTIVE_RULE.value:
+            return True
+        return bool(
+            run.trigger_type == TriggerType.SCHEDULED.value
+            and run.schedule_id is None
+            and run.reason
+            and run.reason.startswith(ADAPTIVE_REASON_PREFIX)
+        )
 
     @staticmethod
     def _duration_seconds(started_at: datetime, finished_at: datetime) -> int:

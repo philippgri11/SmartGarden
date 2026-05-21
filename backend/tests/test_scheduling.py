@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, time
+from zoneinfo import ZoneInfo
 
 from app.application.irrigation_projection_service import IrrigationProjectionService
 from app.application.weather_service import ForecastLookup
@@ -10,6 +11,7 @@ from app.domain.services import current_schedule_slot, is_schedule_due
 from app.infrastructure.db import orm
 from app.infrastructure.db.orm import Schedule
 from app.infrastructure.db.repositories import WateringRunRepository
+from app.infrastructure.scheduler.runner import SchedulerRunner
 from app.infrastructure.weather.open_meteo_client import WeatherForecastSummary
 from app.infrastructure.gpio.simulated import SimulatedGpioAdapter
 
@@ -172,6 +174,52 @@ def test_projection_keeps_fixed_schedule_as_local_wall_time(db_session, monkeypa
     item = projection.items[0]
     assert item.planned_start.time() == time(14, 0)
     assert item.planned_start.utcoffset().total_seconds() == 7200
+
+
+def test_scheduler_creates_fixed_schedule_occurrence_key(db_session, monkeypatch) -> None:
+    zone = orm.Zone(
+        name="Terrasse",
+        description="Terrasse",
+        gpio_chip="/dev/gpiochip0",
+        gpio_line=7,
+        active=True,
+        default_manual_duration_minutes=5,
+        max_duration_minutes=30,
+        weather_enabled=False,
+    )
+    db_session.add(zone)
+    db_session.flush()
+    schedule = orm.Schedule(
+        zone_id=zone.id,
+        active=True,
+        weekdays="fri",
+        start_time=time(6, 0),
+        duration_minutes=5,
+        weather_enabled=False,
+    )
+    db_session.add(schedule)
+    db_session.commit()
+
+    class FixedNow(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = datetime(2026, 5, 15, 4, 5, tzinfo=UTC)
+            return value if tz else value.replace(tzinfo=None)
+
+    monkeypatch.setattr("app.infrastructure.scheduler.runner.datetime", FixedNow)
+    monkeypatch.setattr(
+        "app.infrastructure.scheduler.runner.now_in_app_timezone",
+        lambda settings: datetime(2026, 5, 15, 6, 5, tzinfo=ZoneInfo("Europe/Berlin")),
+    )
+    runner = SchedulerRunner()
+    runner.settings = TEST_SETTINGS
+    runner._plan_due_runs(db_session)
+
+    run = db_session.query(orm.WateringRun).one()
+    assert run.source_type == "static_schedule"
+    assert run.occurrence_key == f"static:{schedule.id}:2026-05-15:06:00:00"
+    assert run.planning_reason == "planned by scheduler"
+    assert run.execution_reason is None
 
 
 def test_projection_endpoint_returns_backend_plan(client, monkeypatch) -> None:

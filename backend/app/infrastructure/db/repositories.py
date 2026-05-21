@@ -5,7 +5,7 @@ from datetime import date, datetime, time
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.models import RunStatus, TriggerType, WeatherDecisionKind
+from app.domain.models import RunSource, RunStatus, TriggerType, WeatherDecisionKind
 from app.infrastructure.db import orm
 
 
@@ -79,6 +79,10 @@ class WateringRunRepository:
         )
         return self.session.execute(stmt).first() is not None
 
+    def exists_occurrence_key(self, occurrence_key: str) -> bool:
+        stmt = select(orm.WateringRun.id).where(orm.WateringRun.occurrence_key == occurrence_key)
+        return self.session.execute(stmt).first() is not None
+
     def create_planned_run(
         self,
         *,
@@ -86,28 +90,45 @@ class WateringRunRepository:
         schedule_id: int | None,
         trigger_type: TriggerType,
         duration_minutes: int,
+        source_type: RunSource | None = None,
+        occurrence_key: str | None = None,
         scheduled_for: date | None = None,
         scheduled_time: time | None = None,
         status: RunStatus = RunStatus.PLANNED,
         reason: str | None = None,
+        planning_reason: str | None = None,
+        execution_reason: str | None = None,
         sequence_group_id: str | None = None,
         sequence_order: int | None = None,
     ) -> orm.WateringRun:
+        plan_reason = planning_reason if planning_reason is not None else reason
         run = orm.WateringRun(
             zone_id=zone_id,
             schedule_id=schedule_id,
             trigger_type=trigger_type.value,
+            source_type=(source_type or self._infer_source_type(trigger_type=trigger_type, schedule_id=schedule_id)).value,
+            occurrence_key=occurrence_key,
             status=status.value,
             scheduled_for=scheduled_for,
             scheduled_time=scheduled_time,
             requested_duration_minutes=duration_minutes,
             sequence_group_id=sequence_group_id,
             sequence_order=sequence_order,
-            reason=reason,
+            reason=plan_reason,
+            planning_reason=plan_reason,
+            execution_reason=execution_reason,
         )
         self.session.add(run)
         self.session.flush()
         return run
+
+    @staticmethod
+    def _infer_source_type(*, trigger_type: TriggerType, schedule_id: int | None) -> RunSource:
+        if trigger_type == TriggerType.MANUAL:
+            return RunSource.MANUAL
+        if schedule_id is not None:
+            return RunSource.STATIC_SCHEDULE
+        return RunSource.ADAPTIVE_RULE
 
     def create_weather_decision(
         self,

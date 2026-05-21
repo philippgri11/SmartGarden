@@ -12,8 +12,7 @@ from app.application.gpio_state_service import GpioStateService
 from app.application.heartbeat_service import HeartbeatService
 from app.application.weather_service import WeatherService
 from app.config import Settings
-from app.domain.adaptive_irrigation import ADAPTIVE_REASON_PREFIX
-from app.domain.models import RunStatus, TriggerType
+from app.domain.models import RunSource, RunStatus, TriggerType
 from app.infrastructure.db import orm
 from app.infrastructure.gpio.base import GpioAdapter
 
@@ -124,10 +123,8 @@ class WatchdogService:
                 func.count(orm.WateringRun.id),
             )
             .where(
-                orm.WateringRun.schedule_id.is_(None),
-                orm.WateringRun.trigger_type == TriggerType.SCHEDULED.value,
+                orm.WateringRun.source_type == RunSource.ADAPTIVE_RULE.value,
                 orm.WateringRun.status.in_([RunStatus.PLANNED.value, RunStatus.RUNNING.value]),
-                orm.WateringRun.reason.like(f"{ADAPTIVE_REASON_PREFIX}%"),
                 orm.WateringRun.scheduled_for.is_not(None),
                 orm.WateringRun.scheduled_time.is_not(None),
             )
@@ -188,7 +185,7 @@ class WatchdogService:
         app_settings.safety_stop_reason = f"Watchdog: {violation.title}"
         for run in self._active_runs():
             run.stop_requested = True
-            run.reason = f"watchdog emergency stop: {violation.title}"
+            run.execution_reason = f"watchdog emergency stop: {violation.title}"
             run.status = RunStatus.CANCELLED.value
             run.finished_at = now
             if run.started_at:
